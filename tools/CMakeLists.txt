@@ -14,7 +14,13 @@ add_executable(queries queries.cpp)
 target_link_libraries(queries
   pisa
   CLI11
-)
+  )
+
+add_executable(cache_queries cache_queries.cpp)
+target_link_libraries(cache_queries
+  pisa
+  CLI11
+  )
 
 add_executable(evaluate_queries evaluate_queries.cpp)
 target_link_libraries(evaluate_queries

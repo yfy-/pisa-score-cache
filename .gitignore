@@ -25,3 +25,11 @@ docs/_build/
 node_modules
 
 .clangd/
+
+# gtags
+GPATH
+GRTAGS
+GTAGS
+
+# Emacs
+.dir-locals.el

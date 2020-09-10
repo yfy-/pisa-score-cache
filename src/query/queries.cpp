@@ -11,6 +11,45 @@
 
 namespace pisa {
 
+bool Query::next_subset(std::vector<size_t>& ptrs,
+                        std::vector<size_t>& end_ptrs,
+                        size_t length) const {
+  for (int i = length - 1; i > -1; i--) {
+    if (ptrs[i] < end_ptrs[i]) {
+      ptrs[i]++;
+      size_t moved = ptrs[i];
+      for (int j = i + 1; j < length; j++) {
+        ptrs[j] = moved + 1;
+        moved++;
+      }
+
+      return true;
+    }
+  }
+
+  return false;
+}
+
+std::vector<Query> Query::subsets(size_t length) const {
+  size_t term_len = terms.size();
+  std::vector<Query> subsets;
+  if (length <= term_len) {
+    std::vector<size_t> ptrs(length);
+    std::iota(std::begin(ptrs), std::end(ptrs), 0);
+    std::vector<size_t> end_ptrs(length);
+    std::iota(std::begin(end_ptrs), std::end(end_ptrs), term_len - length);
+    do {
+      std::vector<term_id_type> subterms(length);
+      for (size_t i = 0; i < length; ++i)
+        subterms[i] = terms[ptrs[i]];
+
+      subsets.emplace_back(Query{std::nullopt, std::move(subterms), {}});
+    } while (next_subset(ptrs, end_ptrs, length));
+  }
+
+  return subsets;
+}
+
 auto split_query_at_colon(std::string const& query_string)
     -> std::pair<std::optional<std::string>, std::string_view>
 {
@@ -43,6 +82,8 @@ auto parse_query_terms(std::string const& query_string, TermProcessor term_proce
             spdlog::warn("Term `{}` not found and will be ignored", raw_term);
         }
     }
+
+    std::sort(std::begin(parsed_query), std::end(parsed_query));
     return {std::move(id), std::move(parsed_query), {}};
 }
 
@@ -64,6 +105,8 @@ auto parse_query_ids(std::string const& query_string) -> Query
         spdlog::error("Could not parse term identifiers of query `{}`", raw_query);
         exit(1);
     }
+
+    std::sort(std::begin(parsed_query), std::end(parsed_query));
     return {std::move(id), std::move(parsed_query), {}};
 }
 
