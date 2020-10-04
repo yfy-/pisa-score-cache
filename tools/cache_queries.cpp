@@ -50,13 +50,14 @@ void op_perftest(
     const ScoreCache& score_cache,
     std::string const& index_type,
     std::string const& query_type,
+    std::uint64_t k,
     size_t runs,
-    std::uint64_t k)
+    bool no_warm_up)
 {
   size_t num_query = queries.size();
   std::vector<std::vector<double>> query_times(num_query);
   std::vector<QueryResult> results;
-  for (size_t run = 0; run <= runs; ++run) {
+  for (size_t run = no_warm_up ? 1 : 0; run <= runs; ++run) {
     size_t idx = 0;
     for (auto const& query: queries) {
       auto start_time = std::chrono::steady_clock::now();
@@ -64,9 +65,12 @@ void op_perftest(
       auto end_time = std::chrono::steady_clock::now();
       auto usecs = std::chrono::duration_cast<std::chrono::microseconds>(
           end_time - start_time);
+      // Add time except warm-up
       if (run)
         query_times[idx].push_back(usecs.count());
-      else
+
+      // Add result only once
+      if (run == 1)
         results.push_back(std::move(result));
 
       idx += 1;
@@ -144,18 +148,22 @@ void perftest(
     std::string const& type,
     std::string const& query_type,
     uint64_t k,
+    uint32_t runs,
+    bool no_warm_up,
     const ScorerParams& scorer_params)
 {
     spdlog::info("Loading index from {}", index_filename);
     IndexType index(MemorySource::mapped_file(index_filename));
 
-    spdlog::info("Warming up posting lists");
-    std::unordered_set<term_id_type> warmed_up;
-    for (auto const& q: queries) {
-        for (auto t: q.terms) {
-            if (!warmed_up.count(t)) {
-                index.warmup(t);
-                warmed_up.insert(t);
+    if (!no_warm_up) {
+        spdlog::info("Warming up posting lists");
+        std::unordered_set<term_id_type> warmed_up;
+        for (auto const& q: queries) {
+            for (auto t: q.terms) {
+                if (!warmed_up.count(t)) {
+                    index.warmup(t);
+                    warmed_up.insert(t);
+                }
             }
         }
     }
@@ -246,7 +254,8 @@ void perftest(
             break;
         }
 
-        op_perftest(query_fun, queries, score_cache, type, t, 2, k);
+        op_perftest(query_fun, queries, score_cache, type, t, k, runs,
+                    no_warm_up);
     }
 }
 
@@ -259,6 +268,8 @@ int main(int argc, const char** argv)
     bool silent = false;
     bool safe = false;
     bool quantized = false;
+    bool no_warm_up = false;
+    uint32_t runs = 2;
 
     App<arg::Index,
         arg::WandData<arg::WandMode::Optional>,
@@ -269,7 +280,13 @@ int main(int argc, const char** argv)
         app{"Benchmarks queries on a given index."};
     app.add_flag("--quantized", quantized, "Quantized scores");
     app.add_flag("--silent", silent, "Suppress logging");
+    app.add_option("--runs", runs,
+                   "Number of runs (initial warm-up run will be already done)");
+    app.add_flag("--no-warm-up", no_warm_up, "Skip the warm-up run");
     CLI11_PARSE(app, argc, argv);
+
+    if (!runs)
+      runs = 1;
 
     if (silent) {
         spdlog::set_default_logger(spdlog::create<spdlog::sinks::null_sink_mt>("stderr"));
@@ -287,6 +304,8 @@ int main(int argc, const char** argv)
         app.index_encoding(),
         app.algorithm(),
         app.k(),
+        runs,
+        no_warm_up,
         app.scorer_params());
     /**/
     if (false) {
