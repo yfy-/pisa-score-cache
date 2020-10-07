@@ -59,7 +59,9 @@ void op_perftest(
   std::vector<QueryResult> results;
   for (size_t run = no_warm_up ? 1 : 0; run <= runs; ++run) {
     size_t idx = 0;
+    spdlog::info("Run id: {}", run);
     for (auto const& query: queries) {
+      spdlog::info("Executing query with id {}", idx);
       auto start_time = std::chrono::steady_clock::now();
       QueryResult result = query_func(query, score_cache);
       auto end_time = std::chrono::steady_clock::now();
