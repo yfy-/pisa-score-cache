@@ -22,6 +22,12 @@ target_link_libraries(cache_queries
   CLI11
   )
 
+add_executable(access_count_ordering access_count_ordering.cpp)
+target_link_libraries(access_count_ordering
+  pisa
+  CLI11
+  )
+
 add_executable(evaluate_queries evaluate_queries.cpp)
 target_link_libraries(evaluate_queries
   pisa
