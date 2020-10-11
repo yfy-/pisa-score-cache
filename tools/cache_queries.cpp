@@ -107,7 +107,7 @@ void op_perftest(
 
 Threshold cache_search(const Query& query, const ScoreCache& cache) {
   std::vector<Query> subqueries;
-  for (size_t i = 2; i > 0; --i) {
+  for (size_t i = 3; i > 0; --i) {
     std::vector<Query> sq = query.subsets(i);
     subqueries.insert(std::end(subqueries), std::begin(sq), std::end(sq));
   }
