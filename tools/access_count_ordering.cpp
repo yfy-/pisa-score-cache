@@ -1,10 +1,12 @@
 #include <CLI/CLI.hpp>
+#include <boost/algorithm/string.hpp>
 #include <fstream>
+#include <spdlog/sinks/stdout_color_sinks.h>
+#include <spdlog/spdlog.h>
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <spdlog/spdlog.h>
-#include <boost/algorithm/string.hpp>
+
 #include "payload_vector.hpp"
 
 int main(int argc, const char** argv) {
@@ -12,6 +14,8 @@ int main(int argc, const char** argv) {
     std::string trec_file = "";
     std::string doclex_file = "";
     uint32_t topk = 10;
+
+    spdlog::set_default_logger(spdlog::stderr_color_mt("stderr"));
     app.add_option("-t,--trec", trec_file, "TREC eval file")->required();
     app.add_option("-d,--doclex", doclex_file, "Document lexicon")->required();
     app.add_option("-k,--topk", topk, "Count until k results");
