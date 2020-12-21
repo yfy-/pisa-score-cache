@@ -10,7 +10,10 @@ using Threshold = float;
 struct topk_queue {
     using entry_type = std::pair<float, uint64_t>;
 
-    explicit topk_queue(uint64_t k) : m_threshold(0), m_k(k) { m_q.reserve(m_k + 1); }
+    explicit topk_queue(uint64_t k) : m_threshold(0), m_k(k),
+                                      m_threshold_at_k(0.0)
+    { m_q.reserve(m_k + 1); }
+
     topk_queue(topk_queue const&) = default;
     topk_queue(topk_queue&&) noexcept = default;
     topk_queue& operator=(topk_queue const&) = default;
@@ -35,6 +38,7 @@ struct topk_queue {
             std::push_heap(m_q.begin(), m_q.end(), min_heap_order);
             if (PISA_UNLIKELY(m_q.size() == m_k)) {
                 m_threshold = m_q.front().first;
+                m_threshold_at_k = m_threshold;
             }
         } else {
             std::pop_heap(m_q.begin(), m_q.end(), min_heap_order);
@@ -74,10 +78,15 @@ struct topk_queue {
 
     [[nodiscard]] size_t size() const noexcept { return m_q.size(); }
 
+    [[nodiscard]] Threshold threshold_at_k() const noexcept {
+      return m_threshold_at_k;
+    }
+
   private:
     float m_threshold;
     uint64_t m_k;
     std::vector<entry_type> m_q;
+    Threshold m_threshold_at_k;
 };
 
 }  // namespace pisa

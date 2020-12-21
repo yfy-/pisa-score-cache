@@ -37,11 +37,13 @@ using ScoreCache = std::unordered_map<Query, Threshold>;
 struct QueryResult {
   const Query& query;
   Threshold init_threshold;
+  Threshold k_threshold;
   Threshold final_threshold;
   std::vector<topk_queue::entry_type> results;
   std::vector<double> times;
   QueryResult(const Query& q, const std::vector<topk_queue::entry_type>&& r)
-      : query(q), results(r), init_threshold(0), final_threshold(0)
+      : query(q), results(r), init_threshold(0), k_threshold(0),
+        final_threshold(0)
   {}
 };
 
@@ -63,7 +65,6 @@ std::vector<QueryResult> op_perftest(
     size_t idx = 0;
     spdlog::info("Run id: {}", run);
     for (auto const& query: queries) {
-      spdlog::info("Executing query with id {}", idx);
       auto start_time = std::chrono::steady_clock::now();
       QueryResult result = query_func(query, score_cache);
       auto end_time = std::chrono::steady_clock::now();
@@ -118,6 +119,7 @@ QueryResult query_execute(
   topk.finalize();
   QueryResult res(query, std::move(topk.topk()));
   res.init_threshold = init_threshold;
+  res.k_threshold = topk.threshold_at_k();
   res.final_threshold = topk.threshold();
   return res;
 }
@@ -252,7 +254,8 @@ void output_results(const std::vector<QueryResult>& results,
            qb != qe; ++qb)
           ros << " " << *qb;
 
-      ros << ";" << r.init_threshold << ";" << r.final_threshold << ";";
+      ros << ";" << r.init_threshold << ";" << r.k_threshold << ";" <<
+          r.final_threshold << ";";
       const std::vector<double>& r_times = r.times;
       ros << r_times[0];
       for (auto tb = r_times.begin() + 1, te = r_times.end(); tb != te; ++tb)
