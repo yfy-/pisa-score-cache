@@ -89,6 +89,10 @@ std::vector<QueryResult> op_perftest(
 }
 
 Threshold cache_search(const Query& query, const ScoreCache& cache) {
+  auto exact_found = cache.find(query);
+  if (exact_found != end(cache))
+    return exact_found->second;
+
   std::vector<Query> subqueries;
   for (size_t i = 3; i > 0; --i) {
     std::vector<Query> sq = query.subsets(i);
@@ -98,7 +102,7 @@ Threshold cache_search(const Query& query, const ScoreCache& cache) {
   Threshold cache_score = 0.0;
   for (auto q : subqueries) {
     auto found = cache.find(q);
-    if (found == cache.end())
+    if (found == end(cache))
       continue;
 
     cache_score = max(cache_score, found->second);
