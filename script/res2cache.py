@@ -12,21 +12,21 @@ def main():
     parser.add_argument("-o", "--output", nargs="?",
                         type=argparse.FileType("w"), default=sys.stdout,
                         help="Output cache file")
-    parser.add_argument("-q", "--query-column", default="query_terms",
-                        help="Result file column for query terms")
-    parser.add_argument("-f", "--final-threshold", default="final_threshold",
-                        help="Result file column for final query score"
-                        " threshold")
+    parser.add_argument("-q", "--query-column", type=int, default=1,
+                        help="Result file column index (starting from 0)"
+                        " for query terms")
+    parser.add_argument("-f", "--final-threshold", default=4, type=int,
+                        help="Result file column index (starting from 0) for"
+                        " final query score threshold")
     try:
         args = parser.parse_args()
         with args.input as istream:
             result_lines = istream.readlines()
 
-        fl_tokens = result_lines[0].split(";")
-        qi = fl_tokens.index(args.query_column)
-        fi = fl_tokens.index(args.final_threshold)
+        qi = args.query_column
+        fi = args.final_threshold
         cache_lines = []
-        for rl in result_lines[1:]:
+        for rl in result_lines:
             rl_tokens = rl.split(";")
             cache_lines.append(f"{rl_tokens[qi]};{rl_tokens[fi]}")
 
