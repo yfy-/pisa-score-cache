@@ -89,6 +89,9 @@ std::vector<QueryResult> op_perftest(
 }
 
 Threshold cache_search(const Query& query, const ScoreCache& cache) {
+  if (cache.empty())
+    return 0.0;
+
   auto exact_found = cache.find(query);
   if (exact_found != end(cache))
     return exact_found->second;
