@@ -11,6 +11,8 @@
 
 namespace pisa {
 
+uint32_t Query::default_query_id = 0;
+
 bool Query::next_subset(std::vector<size_t>& ptrs,
                         std::vector<size_t>& end_ptrs,
                         size_t length) const {
@@ -56,9 +58,9 @@ auto split_query_at_colon(std::string const& query_string)
     // query id : terms (or ids)
     auto colon = std::find(query_string.begin(), query_string.end(), ':');
     std::optional<std::string> id;
-    if (colon != query_string.end()) {
-        id = std::string(query_string.begin(), colon);
-    }
+    id = colon != query_string.end() ?
+         std::string(query_string.begin(), colon) :
+         std::to_string(Query::default_query_id++);
     auto pos = colon == query_string.end() ? query_string.begin() : std::next(colon);
     auto raw_query = std::string_view(&*pos, std::distance(pos, query_string.end()));
     return {std::move(id), raw_query};

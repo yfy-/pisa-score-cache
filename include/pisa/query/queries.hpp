@@ -22,6 +22,8 @@ struct Query {
   std::optional<std::string> id;
   std::vector<term_id_type> terms;
   std::vector<float> term_weights;
+  static uint32_t default_query_id;
+
 
   // TODO: Think of how this constructor could be written
   // Query(std::optional<std::string>&& id, std::vector<term_id_type>&& terms,
