@@ -79,7 +79,7 @@ namespace arg {
 
     template <QueryMode Mode = QueryMode::Ranked>
     struct Query {
-        explicit Query(CLI::App* app)
+        explicit Query(CLI::App* app) : m_unique_queries(false)
         {
             app->add_option("-q,--queries", m_query_file, "Path to file with queries", false);
             auto* terms = app->add_option("--terms", m_term_lexicon, "Term lexicon");
@@ -87,6 +87,7 @@ namespace arg {
                    "--stopwords", m_stop_words, "List of blacklisted stop words to filter out")
                 ->needs(terms);
             app->add_option("--stemmer", m_stemmer, "Stemmer type")->needs(terms);
+            app->add_flag("--unique", m_unique_queries, "Filter-out duplicate queries");
 
             if constexpr (Mode == QueryMode::Ranked) {
                 app->add_option("-k", m_k, "The number of top results to return")->required();
@@ -103,15 +104,37 @@ namespace arg {
 
         [[nodiscard]] auto queries() const -> std::vector<::pisa::Query>
         {
-            std::vector<::pisa::Query> q;
-            auto parse_query = resolve_query_parser(q, m_term_lexicon, m_stop_words, m_stemmer);
+            std::vector<::pisa::Query> pre_queries;
+            auto parse_query = resolve_query_parser(
+                pre_queries, m_term_lexicon, m_stop_words, m_stemmer);
             if (m_query_file) {
                 std::ifstream is(*m_query_file);
                 io::for_each_line(is, parse_query);
             } else {
                 io::for_each_line(std::cin, parse_query);
             }
-            return q;
+
+            std::vector<::pisa::Query> post_queries;
+            std::unordered_set<::pisa::Query> observed;
+            for (const auto& q: pre_queries) {
+                if (q.terms.empty()) {
+                    spdlog::warn("Query with id `{}` has no terms", *q.id);
+                    continue;
+                }
+
+                if (m_unique_queries) {
+                    if (observed.find(q) == std::end(observed)) {
+                        observed.insert(q);
+                        post_queries.emplace_back(std::move(q));
+                    } else {
+                        spdlog::info("Query with id `{}` is not unique", *q.id);
+                    }
+                } else {
+                    post_queries.emplace_back(std::move(q));
+                }
+            }
+
+            return post_queries;
         }
 
         std::optional<std::string> stop_words() { return m_stop_words; }
@@ -125,6 +148,7 @@ namespace arg {
         std::optional<std::string> m_stop_words{std::nullopt};
         std::optional<std::string> m_stemmer{std::nullopt};
         std::optional<std::string> m_term_lexicon{std::nullopt};
+        bool m_unique_queries;
     };
 
     struct Algorithm {

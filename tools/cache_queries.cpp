@@ -204,6 +204,7 @@ std::vector<QueryResult> perftest(
     spdlog::info("K: {}", k);
     std::function<QueryResult(const Query&, const ScoreCache&)> query_fun;
     spdlog::info("Query type: {}", query_type);
+    spdlog::info("Query log size: {}", queries.size());
     if (query_type == "wand" && wand_data_filename) {
       query_fun = [&](const Query& query, const ScoreCache& cache) {
         return query_execute<wand_query>(

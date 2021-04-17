@@ -118,12 +118,14 @@ std::function<void(const std::string)> resolve_query_parser(
 {
     if (terms_file) {
         auto term_processor = TermProcessor(terms_file, stopwords_filename, stemmer_type);
-        return [&queries, term_processor = std::move(term_processor)](std::string const& query_line) {
-            queries.push_back(parse_query_terms(query_line, term_processor));
+        return [&queries, term_processor = std::move(term_processor)]
+                (std::string const& query_line) {
+                queries.push_back(parse_query_terms(query_line, term_processor));
         };
     }
+
     return [&queries](std::string const& query_line) {
-        queries.push_back(parse_query_ids(query_line));
+            queries.push_back(parse_query_ids(query_line));
     };
 }
 
