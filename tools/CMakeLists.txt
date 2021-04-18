@@ -28,6 +28,12 @@ target_link_libraries(access_count_ordering
   CLI11
   )
 
+add_executable(create_score_cache create_score_cache.cpp)
+target_link_libraries(create_score_cache
+  pisa
+  CLI11
+  )
+
 add_executable(evaluate_queries evaluate_queries.cpp)
 target_link_libraries(evaluate_queries
   pisa
