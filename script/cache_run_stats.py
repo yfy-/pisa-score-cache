@@ -12,9 +12,12 @@ class RunResult:
         self.init_threshold = float(tokens[2])
         self.k_threshold = float(tokens[3])
         self.final_threshold = float(tokens[4])
-        self.threshold_ratio = 0.0
+        self.init_threshold_ratio = 0.0
+        self.kth_threshold_ratio = 0.0
         if self.final_threshold:
-            self.threshold_ratio = self.init_threshold / self.final_threshold
+            self.init_threshold_ratio = self.init_threshold /\
+                self.final_threshold
+            self.kth_threshold_ratio = self.k_threshold / self.final_threshold
         self.times = [float(tokens[i]) / 1000 for i in range(5, len(tokens))]
         self.pivot_time = pivot(self.times)
 
@@ -44,10 +47,10 @@ def main():
         os.write("90th={:.2f} ms\n".format(np.percentile(pivot_times, 90)))
         os.write("95th={:.2f} ms\n".format(np.percentile(pivot_times, 95)))
         os.write("99th={:.2f} ms\n".format(np.percentile(pivot_times, 99)))
-        os.write("Mean Threshold Ratio={:.1f}\n".format(
-            np.mean([rr.threshold_ratio for rr in run_results])))
-        os.write("Mean k-Threshold Ratio={:.1f}\n".format(
-            np.mean([rr.k_threshold for rr in run_results])))
+        os.write("Mean Initial Threshold Ratio={:.1f}\n".format(
+            np.mean([rr.init_threshold_ratio for rr in run_results])))
+        os.write("Mean k'th Threshold Ratio={:.1f}\n".format(
+            np.mean([rr.kth_threshold_ratio for rr in run_results])))
 
     return 0
 
