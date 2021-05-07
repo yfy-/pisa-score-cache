@@ -47,9 +47,9 @@ def main():
         os.write("90th={:.2f} ms\n".format(np.percentile(pivot_times, 90)))
         os.write("95th={:.2f} ms\n".format(np.percentile(pivot_times, 95)))
         os.write("99th={:.2f} ms\n".format(np.percentile(pivot_times, 99)))
-        os.write("Mean Initial Threshold Ratio={:.1f}\n".format(
+        os.write("Mean Initial Threshold Ratio={:.2f}\n".format(
             np.mean([rr.init_threshold_ratio for rr in run_results])))
-        os.write("Mean k'th Threshold Ratio={:.1f}\n".format(
+        os.write("Mean k'th Threshold Ratio={:.2f}\n".format(
             np.mean([rr.kth_threshold_ratio for rr in run_results])))
 
     return 0
