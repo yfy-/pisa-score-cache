@@ -39,13 +39,40 @@ struct QueryResult {
   Threshold init_threshold;
   Threshold k_threshold;
   Threshold final_threshold;
-  std::vector<topk_queue::entry_type> results;
   std::vector<double> times;
-  QueryResult(const Query& q, const std::vector<topk_queue::entry_type>&& r)
-      : query(q), results(r), init_threshold(0), k_threshold(0),
-        final_threshold(0)
-  {}
+  QueryResult(const Query& q) : query(q), init_threshold(0), k_threshold(0),
+                                final_threshold(0) {}
 };
+
+void report_result(const std::vector<QueryResult>& results,
+                   const std::string& file) {
+  std::ofstream fs(file);
+  if (!fs.is_open()) {
+    spdlog::error("Cannot open {}", file);
+    return;
+  }
+
+  for (auto& r: results) {
+    if (r.query.terms.empty())
+      continue;
+
+    fs << *r.query.id << "\t";
+    fs << r.query.terms[0];
+    for (auto qb = r.query.terms.begin() + 1, qe = r.query.terms.end();
+         qb != qe; ++qb)
+      fs << "," << *qb;
+    fs << "\t" << r.init_threshold << "\t" << r.k_threshold << "\t" <<
+        r.final_threshold << "\t";
+    const std::vector<double>& r_times = r.times;
+    fs << r_times[0];
+    for (auto tb = r_times.begin() + 1, te = r_times.end(); tb != te; ++tb)
+      fs << "\t" << *tb;
+
+    fs << "\n";
+  }
+
+  fs.close();
+}
 
 template <typename Functor>
 std::vector<QueryResult> op_perftest(
@@ -55,13 +82,12 @@ std::vector<QueryResult> op_perftest(
     std::string const& index_type,
     std::string const& query_type,
     std::uint64_t k,
-    size_t runs,
-    bool no_warm_up)
+    size_t runs)
 {
   size_t num_query = queries.size();
   std::vector<std::vector<double>> query_times(num_query);
   std::vector<QueryResult> results;
-  for (size_t run = no_warm_up ? 1 : 0; run <= runs; ++run) {
+  for (size_t run = 0; run <= runs; ++run) {
     size_t idx = 0;
     spdlog::info("Run id: {}", run);
     for (auto const& query: queries) {
@@ -70,7 +96,7 @@ std::vector<QueryResult> op_perftest(
       auto end_time = std::chrono::steady_clock::now();
       auto usecs = std::chrono::duration_cast<std::chrono::microseconds>(
           end_time - start_time);
-      // Add time except warm-up
+
       if (run)
         query_times[idx].push_back(usecs.count());
 
@@ -124,15 +150,17 @@ QueryResult query_execute(
   QueryType qrun(topk);
   callback(qrun);
   topk.finalize();
-  QueryResult res(query, std::move(topk.topk()));
+  QueryResult res(query);
   res.init_threshold = init_threshold;
   res.k_threshold = topk.threshold_at_k();
   res.final_threshold = topk.threshold();
   return res;
 }
 
+using AlgoResult = std::pair<std::string, std::vector<QueryResult>>;
+
 template <typename IndexType, typename WandType>
-std::vector<QueryResult> perftest(
+std::vector<AlgoResult> perftest(
     const std::string& index_filename,
     const std::optional<std::string>& wand_data_filename,
     const std::vector<Query>& queries,
@@ -143,23 +171,20 @@ std::vector<QueryResult> perftest(
     std::string const& query_type,
     uint64_t k,
     uint32_t runs,
-    bool no_warm_up,
     const ScorerParams& scorer_params)
 {
     spdlog::info("Loading index from {}", index_filename);
     IndexType index(MemorySource::mapped_file(index_filename));
 
-    if (!no_warm_up) {
-        spdlog::info("Warming up posting lists");
-        std::unordered_set<term_id_type> warmed_up;
-        for (auto const& q: queries) {
-            for (auto t: q.terms) {
-                if (!warmed_up.count(t)) {
-                    index.warmup(t);
-                    warmed_up.insert(t);
-                }
-            }
+    spdlog::info("Warming up posting lists");
+    std::unordered_set<term_id_type> warmed_up;
+    for (auto const& q: queries) {
+      for (auto t: q.terms) {
+        if (!warmed_up.count(t)) {
+          index.warmup(t);
+          warmed_up.insert(t);
         }
+      }
     }
 
     WandType const wdata = [&] {
@@ -172,19 +197,20 @@ std::vector<QueryResult> perftest(
     std::vector<std::string> query_lines;
     std::vector<Threshold> scores;
     if (thresholds_filename) {
-        std::string t;
-        std::ifstream tin(*thresholds_filename);
-        while (std::getline(tin, t)) {
-          size_t i = t.find(";");
-          if (i == std::string::npos) {
-            spdlog::error("Invalid cache entry {}, "
-                          "unable to load cache properly", t);
-            break;
-          }
-
-          scores.push_back(std::stof(t.substr(i + 1)));
-          query_lines.push_back(t.substr(0, i));
+      spdlog::info("Loading score cache");
+      std::string t;
+      std::ifstream tin(*thresholds_filename);
+      while (std::getline(tin, t)) {
+        size_t i = t.find(";");
+        if (i == std::string::npos) {
+          spdlog::error("Invalid cache entry {}, "
+                        "unable to load cache properly", t);
+          break;
         }
+
+        scores.push_back(std::stof(t.substr(i + 1)));
+        query_lines.push_back(t.substr(0, i));
+      }
     }
 
     std::vector<Query> cache_queries;
@@ -199,91 +225,59 @@ std::vector<QueryResult> perftest(
     }
 
     auto scorer = scorer::from_params(scorer_params, wdata);
-
     spdlog::info("Performing {} queries", type);
     spdlog::info("K: {}", k);
-    std::function<QueryResult(const Query&, const ScoreCache&)> query_fun;
-    spdlog::info("Query type: {}", query_type);
     spdlog::info("Query log size: {}", queries.size());
-    if (query_type == "wand" && wand_data_filename) {
-      query_fun = [&](const Query& query, const ScoreCache& cache) {
-        return query_execute<wand_query>(
-            query, cache, k, [&](wand_query wand_q) {
-              wand_q(make_max_scored_cursors(index, wdata, *scorer,
-                                             query), index.num_docs());
-            });
-      };
-    } else if (query_type == "block_max_wand" && wand_data_filename) {
-      query_fun = [&](const Query& query, const ScoreCache& cache) {
-        return query_execute<block_max_wand_query>(
-            query, cache, k, [&](block_max_wand_query bmw_q) {
-              bmw_q(make_block_max_scored_cursors(index, wdata, *scorer,
-                                                  query),
-                    index.num_docs());
-            });
-      };
-    } else if (query_type == "block_max_maxscore" && wand_data_filename) {
-      query_fun = [&](const Query& query, const ScoreCache& cache) {
-        return query_execute<block_max_maxscore_query>(
-            query, cache, k, [&](block_max_maxscore_query bmm_q) {
-              bmm_q(make_block_max_scored_cursors(index, wdata, *scorer,
-                                                  query),
-                    index.num_docs());
-            });
-      };
-    } else if (query_type == "maxscore" && wand_data_filename) {
-      query_fun = [&](const Query& query, const ScoreCache& cache) {
-        return query_execute<maxscore_query>(
-            query, cache, k, [&](maxscore_query max_q) {
-              max_q(make_max_scored_cursors(index, wdata, *scorer,
-                                            query), index.num_docs());
-            });
-      };
-    } else {
-      spdlog::error("Unsupported query type: {}", query_type);
-      return {};
+    std::vector<std::string> query_types;
+    boost::algorithm::split(query_types, query_type, boost::is_any_of(":"));
+    std::vector<AlgoResult> algo_results;
+    for (auto&& t: query_types) {
+      std::function<QueryResult(const Query&, const ScoreCache&)> query_fun;
+      spdlog::info("Query type: {}", t);
+      if (t == "wand" && wand_data_filename) {
+        query_fun = [&](const Query& query, const ScoreCache& cache) {
+          return query_execute<wand_query>(
+              query, cache, k, [&](wand_query wand_q) {
+                wand_q(make_max_scored_cursors(index, wdata, *scorer,
+                                               query), index.num_docs());
+              });
+        };
+      } else if (t == "block_max_wand" && wand_data_filename) {
+        query_fun = [&](const Query& query, const ScoreCache& cache) {
+          return query_execute<block_max_wand_query>(
+              query, cache, k, [&](block_max_wand_query bmw_q) {
+                bmw_q(make_block_max_scored_cursors(index, wdata, *scorer,
+                                                    query),
+                      index.num_docs());
+              });
+        };
+      } else if (t == "block_max_maxscore" && wand_data_filename) {
+        query_fun = [&](const Query& query, const ScoreCache& cache) {
+          return query_execute<block_max_maxscore_query>(
+              query, cache, k, [&](block_max_maxscore_query bmm_q) {
+                bmm_q(make_block_max_scored_cursors(index, wdata, *scorer,
+                                                    query),
+                      index.num_docs());
+              });
+        };
+      } else if (t == "maxscore" && wand_data_filename) {
+        query_fun = [&](const Query& query, const ScoreCache& cache) {
+          return query_execute<maxscore_query>(
+              query, cache, k, [&](maxscore_query max_q) {
+                max_q(make_max_scored_cursors(index, wdata, *scorer,
+                                              query), index.num_docs());
+              });
+        };
+      } else {
+        spdlog::error("Unsupported query type: {}", t);
+        continue;
+      }
+
+      algo_results.emplace_back(t, op_perftest(query_fun, queries, score_cache,
+                                               type, query_type, k, runs));
     }
 
-    return op_perftest(query_fun, queries, score_cache, type, query_type, k,
-                       runs, no_warm_up);
-}
-
-void output_results(const std::vector<QueryResult>& results,
-                    std::string run_out, std::string trec_out,
-                    std::string doc_lex_file) {
-  std::ofstream ros(run_out);
-  for (auto& r: results) {
-      if (r.query.terms.empty())
-          continue;
-
-      ros << *r.query.id << ";";
-      ros << r.query.terms[0];
-      for (auto qb = r.query.terms.begin() + 1, qe = r.query.terms.end();
-           qb != qe; ++qb)
-          ros << " " << *qb;
-
-      ros << ";" << r.init_threshold << ";" << r.k_threshold << ";" <<
-          r.final_threshold << ";";
-      const std::vector<double>& r_times = r.times;
-      ros << r_times[0];
-      for (auto tb = r_times.begin() + 1, te = r_times.end(); tb != te; ++tb)
-          ros << ";" << *tb;
-
-      ros << "\n";
-  }
-
-  if (trec_out.empty())
-    return;
-
-  Payload_Vector<std::string> docs(Payload_Vector_Buffer::from_file(
-      doc_lex_file));
-  std::ofstream tos(trec_out);
-  for (auto& r: results) {
-    size_t top_size = r.results.size();
-    for (int rank = 0; rank < top_size; ++rank)
-      tos << *r.query.id << "\tQ0\t" << docs[r.results[rank].second] << "\t" <<
-          rank << "\t" << r.results[rank].first << "\tR0\n";
-  }
+    return algo_results;
 }
 
 using wand_raw_index = wand_data<wand_data_raw>;
@@ -295,11 +289,8 @@ int main(int argc, const char** argv)
     bool silent = false;
     bool safe = false;
     bool quantized = false;
-    bool no_warm_up = false;
     uint32_t runs = 2;
-    std::string run_output_file = "";
-    std::string trec_output_file = "";
-    std::string documents_file = "";
+    std::string out_basename = "";
 
     App<arg::Index,
         arg::WandData<arg::WandMode::Optional>,
@@ -308,18 +299,11 @@ int main(int argc, const char** argv)
         arg::Scorer,
         arg::Thresholds>
         app{"Benchmarks queries on a given index."};
+    app.add_option("-o,--output", out_basename, "Output basename")->required();
     app.add_flag("--quantized", quantized, "Quantized scores");
     app.add_flag("--silent", silent, "Suppress logging");
-    app.add_option("--run-out", run_output_file,
-                 "Output file for run time information")->required();
-    CLI::Option* doc_opt = app.add_option("--documents", documents_file,
-                                          "Document lexicon");
-    app.add_option("--trec-out", trec_output_file,
-                 "Output file for trec results")->needs(doc_opt);
-
     app.add_option("--runs", runs,
                    "Number of runs (initial warm-up run will be already done)");
-    app.add_flag("--no-warm-up", no_warm_up, "Skip the warm-up run");
     CLI11_PARSE(app, argc, argv);
 
     if (!runs)
@@ -342,9 +326,8 @@ int main(int argc, const char** argv)
         app.algorithm(),
         app.k(),
         runs,
-        no_warm_up,
         app.scorer_params());
-    std::vector<QueryResult> results;
+    std::vector<AlgoResult> results;
     /**/
     if (false) {
 #define LOOP_BODY(R, DATA, T)                                                                        \
@@ -368,5 +351,13 @@ int main(int argc, const char** argv)
         spdlog::error("Unknown type {}", app.index_encoding());
     }
 
-    output_results(results, run_output_file, trec_output_file, documents_file);
+    if (app.stemmer())
+      out_basename += "_" + *app.stemmer();
+
+    out_basename += "_" + app.index_encoding() + "_" + std::to_string(app.k()) +
+                    "_" + app.scorer_params().name;
+    for (const auto& ar: results)
+      report_result(ar.second, out_basename + "." + ar.first);
+
+    return 0;
 }

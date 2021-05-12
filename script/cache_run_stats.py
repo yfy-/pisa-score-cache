@@ -6,9 +6,9 @@ import sys
 
 class RunResult:
     def __init__(self, run_line, pivot):
-        tokens = run_line.split(";")
+        tokens = run_line.split("\t")
         self.qid = int(tokens[0])
-        self.terms = [int(t) for t in tokens[1].split()]
+        self.terms = [int(t) for t in tokens[1].split(",")]
         self.init_threshold = float(tokens[2])
         self.k_threshold = float(tokens[3])
         self.final_threshold = float(tokens[4])
