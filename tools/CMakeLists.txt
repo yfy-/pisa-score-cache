@@ -34,6 +34,12 @@ target_link_libraries(create_score_cache
   CLI11
   )
 
+add_executable(top_terms top_terms.cpp)
+target_link_libraries(top_terms
+  pisa
+  CLI11
+  )
+
 add_executable(evaluate_queries evaluate_queries.cpp)
 target_link_libraries(evaluate_queries
   pisa
