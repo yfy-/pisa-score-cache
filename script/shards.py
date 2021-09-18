@@ -14,9 +14,10 @@ def main():
     parser.add_argument("cmd")
     parser.add_argument("n_shard", type=int)
     parser.add_argument("-j", "--jobs", type=int, default=1)
+    parser.add_argument("-s", "--start", type=int, default=0)
     args = parser.parse_args()
-    workload = [args.cmd.replace("{}", label(s))
-                for s in range(1, args.n_shard + 1)]
+    workload = [args.cmd.replace("{}", label(s)) for
+                s in range(args.n_shard) if s >= args.start]
     partial_run = partial(subprocess.run, shell=True)
     with multiprocessing.Pool(args.jobs) as p:
         p.map(partial_run, workload)
