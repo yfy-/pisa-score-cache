@@ -139,6 +139,7 @@ namespace arg {
 
         std::optional<std::string> stop_words() { return m_stop_words; }
         std::optional<std::string> stemmer() { return m_stemmer; }
+        std::optional<std::string> term_lexicon() { return m_term_lexicon; }
 
         [[nodiscard]] auto k() const -> int { return m_k; }
 

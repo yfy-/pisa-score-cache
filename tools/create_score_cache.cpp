@@ -12,8 +12,8 @@ using namespace pisa;
 int main(int argc, const char** argv) {
   spdlog::set_default_logger(spdlog::stderr_color_mt("default"));
   App<arg::Query<arg::QueryMode::Ranked>> app(
-      "Creates a score cache from REC results and the query log that produced"
-      " those results `with evaluate_queries`");
+      "Creates a score cache from TREC results and the query log that produced"
+      " those results with `evaluate_queries`");
   std::string trec_file;
   app.add_option("-t,--trec", trec_file, "TREC file")->required();
   CLI11_PARSE(app, argc, argv);
@@ -43,14 +43,33 @@ int main(int argc, const char** argv) {
     }
   }
 
-  for (const Query& q: app.queries()) {
-    std::cout << q.terms[0];
-    for (std::vector<term_id_type>::const_iterator tid =
-             std::next(std::begin(q.terms));
-         tid != std::end(q.terms); ++tid)
-      std::cout << " " << *tid;
+  std::optional<std::string> lex_file = app.term_lexicon();
+  if (lex_file) {
+    mio::mmap_source m(lex_file->c_str());
+    auto payload = Payload_Vector<>::from(m);
+    for (const Query& q: app.queries()) {
+      std::cout << payload[q.terms[0]];
 
-    std::cout << ";" << kth_scores[*q.id] << "\n";
+        for (std::vector<term_id_type>::const_iterator tid =
+                 std::next(std::begin(q.terms));
+             tid != std::end(q.terms);
+             ++tid)
+          std::cout << " " << payload[*tid];
+
+        std::cout << ";" << kth_scores[*q.id] << "\n";
+    }
+  } else {
+      for (const Query& q: app.queries()) {
+          std::cout << q.terms[0];
+
+          for (std::vector<term_id_type>::const_iterator tid =
+                   std::next(std::begin(q.terms));
+               tid != std::end(q.terms);
+               ++tid)
+              std::cout << " " << *tid;
+
+          std::cout << ";" << kth_scores[*q.id] << "\n";
+      }
   }
 
   return 0;
