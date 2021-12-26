@@ -216,46 +216,47 @@ auto process_shard(
     VecMap<Term_Id, std::string> const& terms)
 {
     auto basename = fmt::format("{}.{:03d}", output_basename, shard_id.as_int());
-    auto shard = writable_binary_collection(basename.c_str());
+    // DO NOT WRITE TERMS
+    // auto shard = writable_binary_collection(basename.c_str());
 
-    spdlog::debug("[Shard {}] Calculating term occurrences", shard_id.as_int());
-    std::vector<uint32_t> has_term(terms.size(), 0U);
-    for (auto iter = ++shard.begin(); iter != shard.end(); ++iter) {
-        for (auto term: *iter) {
-            has_term[term] = 1U;
-        }
-    }
+    // spdlog::debug("[Shard {}] Calculating term occurrences", shard_id.as_int());
+    // std::vector<uint32_t> has_term(terms.size(), 0U);
+    // for (auto iter = ++shard.begin(); iter != shard.end(); ++iter) {
+    //     for (auto term: *iter) {
+    //         has_term[term] = 1U;
+    //     }
+    // }
 
-    spdlog::debug("[Shard {}] Writing terms", shard_id.as_int());
-    {
-        std::ofstream tos(fmt::format("{}.terms", basename));
-        for (auto&& [term, occurs]: ranges::views::zip(terms.as_vector(), has_term)) {
-            if (occurs != 0U) {
-                tos << term << '\n';
-            }
-        }
-    }
+    // spdlog::debug("[Shard {}] Writing terms", shard_id.as_int());
+    // {
+    //     std::ofstream tos(fmt::format("{}.terms", basename));
+    //     for (auto&& [term, occurs]: ranges::views::zip(terms.as_vector(), has_term)) {
+    //         if (occurs != 0U) {
+    //             tos << term << '\n';
+    //         }
+    //     }
+    // }
 
-    {
-        spdlog::debug("[Shard {}] Creating term lexicon", shard_id.as_int());
-        std::ifstream title_is(fmt::format("{}.terms", basename));
-        encode_payload_vector(
-            std::istream_iterator<io::Line>(title_is), std::istream_iterator<io::Line>())
-            .to_file(fmt::format("{}.termlex", basename));
-    }
+    // {
+    //     spdlog::debug("[Shard {}] Creating term lexicon", shard_id.as_int());
+    //     std::ifstream title_is(fmt::format("{}.terms", basename));
+    //     encode_payload_vector(
+    //         std::istream_iterator<io::Line>(title_is), std::istream_iterator<io::Line>())
+    //         .to_file(fmt::format("{}.termlex", basename));
+    // }
 
-    spdlog::debug("[Shard {}] Remapping term IDs", shard_id.as_int());
-    if (auto pos = std::find(has_term.begin(), has_term.end(), 1U); pos != has_term.end()) {
-        *pos = 0U;
-    }
-    std::partial_sum(has_term.begin(), has_term.end(), has_term.begin());
-    auto remapped_term_id = [&](auto term) { return has_term[term]; };
-    spdlog::debug("[Shard {}] Writing remapped collection", shard_id.as_int());
-    for (auto iter = ++shard.begin(); iter != shard.end(); ++iter) {
-        for (auto& term: *iter) {
-            term = remapped_term_id(term);
-        }
-    }
+    // spdlog::debug("[Shard {}] Remapping term IDs", shard_id.as_int());
+    // if (auto pos = std::find(has_term.begin(), has_term.end(), 1U); pos != has_term.end()) {
+    //     *pos = 0U;
+    // }
+    // std::partial_sum(has_term.begin(), has_term.end(), has_term.begin());
+    // auto remapped_term_id = [&](auto term) { return has_term[term]; };
+    // spdlog::debug("[Shard {}] Writing remapped collection", shard_id.as_int());
+    // for (auto iter = ++shard.begin(); iter != shard.end(); ++iter) {
+    //     for (auto& term: *iter) {
+    //         term = remapped_term_id(term);
+    //     }
+    // }
     {
         spdlog::debug("[Shard {}] Creating document lexicon", shard_id.as_int());
         std::ifstream os(fmt::format("{}.documents", basename));
