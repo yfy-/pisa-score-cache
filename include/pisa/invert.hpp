@@ -322,11 +322,11 @@ namespace invert {
                 spdlog::error(msg);
                 throw std::runtime_error(msg);
             }
-            if (dlist.empty()) {
-                auto msg = fmt::format("Posting list must be non-empty (term {})", term_id);
-                spdlog::error(msg);
-                throw std::runtime_error(msg);
-            }
+            // if (dlist.empty()) {
+            //     auto msg = fmt::format("Posting list must be non-empty (term {})", term_id);
+            //     spdlog::error(msg);
+            //     throw std::runtime_error(msg);
+            // }
             postings_count += dlist.size();
             write_sequence(dos, gsl::span<uint32_t const>(dlist));
             write_sequence(fos, gsl::span<uint32_t const>(flist));
