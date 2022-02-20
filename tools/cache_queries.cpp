@@ -167,6 +167,7 @@ std::vector<AlgoResult> perftest(
     const std::optional<std::string>& thresholds_filename,
     const std::optional<std::string>& stopwords_filename,
     const std::optional<std::string>& stemmer_type,
+    const std::optional<std::string>& terms_filename,
     std::string const& type,
     std::string const& query_type,
     uint64_t k,
@@ -214,8 +215,9 @@ std::vector<AlgoResult> perftest(
     }
 
     std::vector<Query> cache_queries;
-    std::transform(std::begin(query_lines), std::end(query_lines),
-                   std::back_inserter(cache_queries), parse_query_ids);
+    std::function<void(const std::string)> parser = resolve_query_parser(
+        cache_queries, terms_filename, stopwords_filename, stemmer_type);
+    std::for_each(std::begin(query_lines), std::end(query_lines), parser);
     ScoreCache score_cache;
     for (int i = 0; i < scores.size(); ++i) {
       if (!cache_queries[i].terms.size())
@@ -289,6 +291,7 @@ int main(int argc, const char** argv)
     bool silent = false;
     bool safe = false;
     bool quantized = false;
+    bool result_cache_filter = false;
     uint32_t runs = 2;
     std::string out_basename = "";
 
@@ -302,6 +305,8 @@ int main(int argc, const char** argv)
     app.add_option("-o,--output", out_basename, "Output basename")->required();
     app.add_flag("--quantized", quantized, "Quantized scores");
     app.add_flag("--silent", silent, "Suppress logging");
+    app.add_flag("--result-cache-filter", result_cache_filter,
+                 "Do not run if query exactly hits score cache/result cache");
     app.add_option("--runs", runs,
                    "Number of runs (initial warm-up run will be already done)");
     CLI11_PARSE(app, argc, argv);
@@ -315,6 +320,7 @@ int main(int argc, const char** argv)
         spdlog::set_default_logger(spdlog::stderr_color_mt("stderr"));
     }
 
+    // TODO: use result_cache_filter
     auto params = std::make_tuple(
         app.index_filename(),
         app.wand_data_path(),
@@ -322,6 +328,7 @@ int main(int argc, const char** argv)
         app.thresholds_file(),
         app.stop_words(),
         app.stemmer(),
+        app.term_lexicon(),
         app.index_encoding(),
         app.algorithm(),
         app.k(),

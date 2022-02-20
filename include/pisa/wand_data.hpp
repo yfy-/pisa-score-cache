@@ -40,86 +40,107 @@ class wand_data {
         LengthsIterator len_it,
         uint64_t num_docs,
         binary_freq_collection const& coll,
+        std::optional<std::string> const& global_input_basename,
         const ScorerParams& scorer_params,
         BlockSize block_size,
         bool is_quantized,
         std::unordered_set<size_t> const& terms_to_drop)
         : m_num_docs(num_docs)
-    {
-        std::vector<uint32_t> doc_lens(num_docs);
-        std::vector<float> max_term_weight;
-        std::vector<uint32_t> term_occurrence_counts;
-        std::vector<uint32_t> term_posting_counts;
-        global_parameters params;
-        spdlog::info("Reading sizes...");
+  {
+    std::vector<uint32_t> doc_lens(num_docs);
+    std::vector<float> max_term_weight;
+    std::vector<uint32_t> term_occurrence_counts;
+    std::vector<uint32_t> term_posting_counts;
+    global_parameters params;
+    spdlog::info("Reading sizes...");
 
-        for (size_t i = 0; i < num_docs; ++i) {
-            uint32_t len = *len_it++;
-            doc_lens[i] = len;
-            m_collection_len += len;
-        }
-
-        m_avg_len = float(m_collection_len / double(num_docs));
-
-        typename block_wand_type::builder builder(coll, params);
-
-        {
-            pisa::progress progress("Storing terms statistics", coll.size());
-            size_t term_id = 0;
-            for (auto const& seq: coll) {
-                if (terms_to_drop.find(term_id) != terms_to_drop.end()) {
-                    progress.update(1);
-                    term_id += 1;
-                    continue;
-                }
-
-                size_t term_occurrence_count = std::accumulate(seq.freqs.begin(), seq.freqs.end(), 0);
-                term_occurrence_counts.push_back(term_occurrence_count);
-                term_posting_counts.push_back(seq.docs.size());
-                term_id += 1;
-                progress.update(1);
-            }
-        }
-        m_doc_lens.steal(doc_lens);
-        m_term_occurrence_counts.steal(term_occurrence_counts);
-        m_term_posting_counts.steal(term_posting_counts);
-
-        auto scorer = scorer::from_params(scorer_params, *this);
-        {
-            pisa::progress progress("Storing score upper bounds", coll.size());
-            size_t term_id = 0;
-            size_t new_term_id = 0;
-            for (auto const& seq: coll) {
-                if (terms_to_drop.find(term_id) != terms_to_drop.end()) {
-                    progress.update(1);
-                    term_id += 1;
-                    continue;
-                }
-                auto v = builder.add_sequence(
-                    seq, coll, doc_lens, m_avg_len, scorer->term_scorer(new_term_id), block_size);
-                max_term_weight.push_back(v);
-                m_index_max_term_weight = std::max(m_index_max_term_weight, v);
-                term_id += 1;
-                new_term_id += 1;
-                progress.update(1);
-            }
-            if (is_quantized) {
-                LinearQuantizer quantizer(
-                    m_index_max_term_weight, configuration::get().quantization_bits);
-                for (auto&& w: max_term_weight) {
-                    w = quantizer(w);
-                }
-                builder.quantize_block_max_term_weights(m_index_max_term_weight);
-            }
-        }
-        builder.build(m_block_wand);
-        m_max_term_weight.steal(max_term_weight);
+    for (size_t i = 0; i < num_docs; ++i) {
+      uint32_t len = *len_it++;
+      doc_lens[i] = len;
+      m_collection_len += len;
     }
+
+    m_avg_len = float(m_collection_len / double(num_docs));
+    binary_freq_collection* global_coll = nullptr;
+    if (global_input_basename) {
+      spdlog::info("Using global collection: {}", *global_input_basename);
+      global_coll = new binary_freq_collection(global_input_basename->c_str());
+      m_num_docs = global_coll->num_docs();
+      m_collection_len = 0;
+      binary_collection glob_sizes_coll((*global_input_basename +
+                                         ".sizes").c_str());
+      LengthsIterator len_it = glob_sizes_coll.begin()->begin();
+      for (size_t i = 0; i < m_num_docs; ++i) {
+        uint32_t len = *len_it++;
+        m_collection_len += len;
+      }
+
+      m_avg_len = float(m_collection_len / double(m_num_docs));
+    }
+
+    spdlog::info("Average doc length is {}", m_avg_len);
+
+    {
+      auto term_coll = global_coll ? global_coll : &coll;
+      pisa::progress progress("Storing terms statistics", term_coll->size());
+      size_t term_id = 0;
+      for (auto const& seq: *term_coll) {
+        if (terms_to_drop.find(term_id) != terms_to_drop.end()) {
+          progress.update(1);
+          term_id += 1;
+          continue;
+        }
+
+        size_t term_occurrence_count = std::accumulate(seq.freqs.begin(), seq.freqs.end(), 0);
+        term_occurrence_counts.push_back(term_occurrence_count);
+        term_posting_counts.push_back(seq.docs.size());
+        term_id += 1;
+        progress.update(1);
+      }
+    }
+    m_doc_lens.steal(doc_lens);
+    m_term_occurrence_counts.steal(term_occurrence_counts);
+    m_term_posting_counts.steal(term_posting_counts);
+
+    typename block_wand_type::builder builder(coll, params);
+    auto scorer = scorer::from_params(scorer_params, *this);
+    {
+      pisa::progress progress("Storing score upper bounds", coll.size());
+      size_t term_id = 0;
+      size_t new_term_id = 0;
+      for (auto const& seq: coll) {
+        // if (terms_to_drop.find(term_id) != terms_to_drop.end()) {
+        //   progress.update(1);
+        //   term_id += 1;
+        //   continue;
+        // }
+        auto v = builder.add_sequence(
+            seq, coll, doc_lens, m_avg_len, scorer->term_scorer(new_term_id), block_size);
+        max_term_weight.push_back(v);
+        m_index_max_term_weight = std::max(m_index_max_term_weight, v);
+        term_id += 1;
+        new_term_id += 1;
+        progress.update(1);
+      }
+      if (is_quantized) {
+        LinearQuantizer quantizer(
+            m_index_max_term_weight, configuration::get().quantization_bits);
+        for (auto&& w: max_term_weight) {
+          w = quantizer(w);
+        }
+        builder.quantize_block_max_term_weights(m_index_max_term_weight);
+      }
+    }
+    builder.build(m_block_wand);
+    m_max_term_weight.steal(max_term_weight);
+
+    if (global_coll)
+      delete global_coll;
+  }
 
     float norm_len(uint64_t doc_id) const { return m_doc_lens[doc_id] / m_avg_len; }
 
     size_t doc_len(uint64_t doc_id) const { return m_doc_lens[doc_id]; }
-
     size_t term_occurrence_count(uint64_t term_id) const
     {
         return m_term_occurrence_counts[term_id];
@@ -172,6 +193,7 @@ class wand_data {
 void create_wand_data(
     std::string const& output,
     std::string const& input_basename,
+    std::optional<std::string> const& global_input_basename,
     BlockSize block_size,
     const ScorerParams& scorer_params,
     bool range,
@@ -179,40 +201,46 @@ void create_wand_data(
     bool quantize,
     std::unordered_set<size_t> const& dropped_term_ids)
 {
-    spdlog::info("Dropping {} terms", dropped_term_ids.size());
-    binary_collection sizes_coll((input_basename + ".sizes").c_str());
-    binary_freq_collection coll(input_basename.c_str());
+  binary_freq_collection coll(input_basename.c_str());
+  uint64_t num_docs = coll.num_docs();
 
-    if (compress) {
-        wand_data<wand_data_compressed<>> wdata(
-            sizes_coll.begin()->begin(),
-            coll.num_docs(),
-            coll,
-            scorer_params,
-            block_size,
-            quantize,
-            dropped_term_ids);
-        mapper::freeze(wdata, output.c_str());
-    } else if (range) {
-        wand_data<wand_data_range<128, 1024>> wdata(
-            sizes_coll.begin()->begin(),
-            coll.num_docs(),
-            coll,
-            scorer_params,
-            block_size,
-            quantize,
-            dropped_term_ids);
-        mapper::freeze(wdata, output.c_str());
-    } else {
-        wand_data<wand_data_raw> wdata(
-            sizes_coll.begin()->begin(),
-            coll.num_docs(),
-            coll,
-            scorer_params,
-            block_size,
-            quantize,
-            dropped_term_ids);
-        mapper::freeze(wdata, output.c_str());
-    }
+  spdlog::info("Using size basename {}", input_basename);
+  spdlog::info("Num docs is {}", num_docs);
+  spdlog::info("Dropping {} terms", dropped_term_ids.size());
+  binary_collection sizes_coll((input_basename + ".sizes").c_str());
+  if (compress) {
+    wand_data<wand_data_compressed<>> wdata(
+        sizes_coll.begin()->begin(),
+        num_docs,
+        coll,
+        global_input_basename,
+        scorer_params,
+        block_size,
+        quantize,
+        dropped_term_ids);
+    mapper::freeze(wdata, output.c_str());
+  } else if (range) {
+    wand_data<wand_data_range<128, 1024>> wdata(
+        sizes_coll.begin()->begin(),
+        num_docs,
+        coll,
+        global_input_basename,
+        scorer_params,
+        block_size,
+        quantize,
+        dropped_term_ids);
+    mapper::freeze(wdata, output.c_str());
+  } else {
+    wand_data<wand_data_raw> wdata(
+        sizes_coll.begin()->begin(),
+        num_docs,
+        coll,
+        global_input_basename,
+        scorer_params,
+        block_size,
+        quantize,
+        dropped_term_ids);
+    mapper::freeze(wdata, output.c_str());
+  }
 }
 }  // namespace pisa

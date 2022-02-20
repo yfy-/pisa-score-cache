@@ -97,6 +97,7 @@ int main(int argc, char** argv)
                 pisa::create_wand_data(
                     shard_args.output(),
                     shard_args.input_basename(),
+                    std::nullopt,
                     shard_args.block_size(),
                     shard_args.scorer_params(),
                     shard_args.range(),
