@@ -65,12 +65,14 @@ def main():
                 qid_times[r.qid] = max(qid_times[r.qid], r.pivot_time)
 
         pivot_times = list(qid_times.values())
+        print("---------------")
         print("MERGED RESULTS")
-        print("Mean={:.2f} ms\n".format(np.mean(pivot_times)))
-        print("Median={:.2f} ms\n".format(np.median(pivot_times)))
-        print("90th={:.2f} ms\n".format(np.percentile(pivot_times, 90)))
-        print("95th={:.2f} ms\n".format(np.percentile(pivot_times, 95)))
-        print("99th={:.2f} ms\n".format(np.percentile(pivot_times, 99)))
+        print("---------------")
+        print("Mean={:.2f} ms".format(np.mean(pivot_times)))
+        print("Median={:.2f} ms".format(np.median(pivot_times)))
+        print("90th={:.2f} ms".format(np.percentile(pivot_times, 90)))
+        print("95th={:.2f} ms".format(np.percentile(pivot_times, 95)))
+        print("99th={:.2f} ms".format(np.percentile(pivot_times, 99)))
 
 
     for i, arr in enumerate(all_run_results):
@@ -80,14 +82,14 @@ def main():
         print("------------")
         pivot_times = [r.pivot_time for r in arr]
 
-        print("Mean={:.2f} ms\n".format(np.mean(pivot_times)))
-        print("Median={:.2f} ms\n".format(np.median(pivot_times)))
-        print("90th={:.2f} ms\n".format(np.percentile(pivot_times, 90)))
-        print("95th={:.2f} ms\n".format(np.percentile(pivot_times, 95)))
-        print("99th={:.2f} ms\n".format(np.percentile(pivot_times, 99)))
-        print("Mean Initial Threshold Ratio={:.2f}\n".format(
+        print("Mean={:.2f} ms".format(np.mean(pivot_times)))
+        print("Median={:.2f} ms".format(np.median(pivot_times)))
+        print("90th={:.2f} ms".format(np.percentile(pivot_times, 90)))
+        print("95th={:.2f} ms".format(np.percentile(pivot_times, 95)))
+        print("99th={:.2f} ms".format(np.percentile(pivot_times, 99)))
+        print("Mean Initial Threshold Ratio={:.2f}".format(
             np.mean([rr.init_threshold_ratio for rr in arr])))
-        print("Mean k'th Threshold Ratio={:.2f}\n".format(
+        print("Mean k'th Threshold Ratio={:.2f}".format(
             np.mean([rr.kth_threshold_ratio for rr in arr])))
 
     return 0
