@@ -51,9 +51,9 @@ def main():
     pivot_dict = {"min": np.min, "mean": np.mean, "med": np.median}
     pivot = pivot_dict[args.pivot_run]
     all_run_results = []
-    for i in args.input:
-        with open(i, "r") as is:
-            run_lines = is.readlines()
+    for inp in args.input:
+        with open(inp, "r") as inps:
+            run_lines = inps.readlines()
 
         run_results = [RunResult(rl.rstrip(), pivot) for rl in run_lines[1:]]
         all_run_results.append(run_results)
