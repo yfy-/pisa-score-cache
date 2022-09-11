@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+from typing import List
 import numpy as np
 from collections import defaultdict
 
@@ -38,6 +39,11 @@ class RunResult:
         return merged
 
 
+def read_results(path, pivot_func) -> List[RunResult]:
+    with open(path, "r") as inps:
+        run_lines = inps.readlines()
+
+    return [RunResult(rl.rstrip(), pivot=pivot_func) for rl in run_lines[1:]]
 
 def main():
     parser = argparse.ArgumentParser(
@@ -52,10 +58,7 @@ def main():
     pivot = pivot_dict[args.pivot_run]
     all_run_results = []
     for inp in args.input:
-        with open(inp, "r") as inps:
-            run_lines = inps.readlines()
-
-        run_results = [RunResult(rl.rstrip(), pivot) for rl in run_lines[1:]]
+        run_results = read_results(inp, pivot)
         all_run_results.append(run_results)
 
     if len(all_run_results) > 1:
