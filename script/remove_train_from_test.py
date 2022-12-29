@@ -23,7 +23,7 @@ def _main():
 
     for tl in test_lines:
         if _rewrite_sorted(tl) not in unique_queries:
-            print(tl)
+            print(tl, end="")
 
     return 0
 
