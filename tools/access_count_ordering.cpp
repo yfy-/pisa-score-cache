@@ -4,7 +4,7 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 #include <string>
-#include <unordered_map>
+#include <map>
 #include <vector>
 
 #include "payload_vector.hpp"
@@ -20,6 +20,7 @@ int main(int argc, const char** argv) {
   std::string trec_file = "";
   std::string doclex_file = "";
   bool tie_break_score = false;
+  bool distro = false;
   uint32_t topk = 10;
 
   spdlog::set_default_logger(spdlog::stderr_color_mt("stderr"));
@@ -28,6 +29,8 @@ int main(int argc, const char** argv) {
   app.add_option("-k,--topk", topk, "Count until k results");
   app.add_flag("-s,--total-score", tie_break_score,
                "Break ties by total score before id");
+  app.add_flag("-i,--distro", distro,
+               "Outputs frequency distribution rather than new doc mapping");
   CLI11_PARSE(app, argc, argv);
 
   auto doc_buffer = pisa::Payload_Vector_Buffer::from_file(doclex_file);
@@ -69,8 +72,18 @@ int main(int argc, const char** argv) {
               return d1.access_freq > d2.access_freq;
             });
 
-  for (std::uint32_t i = 0; i < num_docs; ++i)
-    std::cout << access_counts[i].orig_id << " " << i << "\n";
+  std::map<std::uint32_t, std::uint32_t> freq_counts;
+  for (std::uint32_t i = 0; i < num_docs; ++i) {
+      if (distro)
+          ++freq_counts[access_counts[i].access_freq];
+      else
+        std::cout << access_counts[i].orig_id << " " << i << "\n";
+  }
+
+  if (distro) {
+    for (auto [freq, freq_count]: freq_counts)
+      std::cout << freq << " " << freq_count << "\n";
+  }
 
   return 0;
 }
