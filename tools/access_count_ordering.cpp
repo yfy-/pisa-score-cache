@@ -12,6 +12,7 @@
 struct Doc {
   std::uint32_t orig_id;
   std::uint32_t access_freq;
+  std::uint32_t access_freq_above_threshold;
   float total_score;
 };
 
@@ -22,6 +23,7 @@ int main(int argc, const char** argv) {
   bool tie_break_score = false;
   bool distro = false;
   uint32_t topk = 10;
+  uint32_t access_threshold = 0;
 
   spdlog::set_default_logger(spdlog::stderr_color_mt("stderr"));
   app.add_option("-t,--trec", trec_file, "TREC eval file")->required();
@@ -31,6 +33,9 @@ int main(int argc, const char** argv) {
                "Break ties by total score before id");
   app.add_flag("-i,--distro", distro,
                "Outputs frequency distribution rather than new doc mapping");
+  app.add_option("-a,--access-threshold", access_threshold,
+                 "Only access counts greater or equal to"
+                 " threshold will be re-ordered");
   CLI11_PARSE(app, argc, argv);
 
   auto doc_buffer = pisa::Payload_Vector_Buffer::from_file(doclex_file);
@@ -54,7 +59,11 @@ int main(int argc, const char** argv) {
     uint32_t rank = std::stoul(cols[3]);
     float score = std::stof(cols[4]);
     if (rank < topk) {
-      access_counts[doc_id].access_freq++;
+      if (++access_counts[doc_id].access_freq >= access_threshold) {
+        access_counts[doc_id].access_freq_above_threshold =
+            access_counts[doc_id].access_freq;
+      }
+
       access_counts[doc_id].total_score += score;
     }
   }
@@ -62,14 +71,16 @@ int main(int argc, const char** argv) {
   spdlog::info("Sorting access counts");
   std::sort(std::begin(access_counts), std::end(access_counts),
             [&tie_break_score](const Doc& d1, const Doc& d2) {
-              if (d1.access_freq == d2.access_freq) {
+              if (d1.access_freq_above_threshold ==
+                  d2.access_freq_above_threshold) {
                 if (!tie_break_score || d1.total_score == d2.total_score)
                   return d1.orig_id < d2.orig_id;
 
                 return d1.total_score > d2.total_score;
               }
 
-              return d1.access_freq > d2.access_freq;
+              return d1.access_freq_above_threshold >
+                  d2.access_freq_above_threshold;
             });
 
   std::map<std::uint32_t, std::uint32_t> freq_counts;
