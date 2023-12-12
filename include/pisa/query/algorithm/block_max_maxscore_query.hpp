@@ -1,8 +1,9 @@
 #pragma once
 
+#include <vector>
+
 #include "query/queries.hpp"
 #include "topk_queue.hpp"
-#include <vector>
 
 namespace pisa {
 
@@ -59,8 +60,8 @@ struct block_max_maxscore_query {
                 if (ordered_cursors[i]->block_max_docid() < cur_doc) {
                     ordered_cursors[i]->block_max_next_geq(cur_doc);
                 }
-                block_upper_bound -= ordered_cursors[i]->max_score()
-                    - ordered_cursors[i]->block_max_score() * ordered_cursors[i]->query_weight();
+                block_upper_bound -=
+                    ordered_cursors[i]->max_score() - ordered_cursors[i]->block_max_score();
                 if (!m_topk.would_enter(score + block_upper_bound)) {
                     break;
                 }
@@ -71,11 +72,9 @@ struct block_max_maxscore_query {
                     ordered_cursors[i]->next_geq(cur_doc);
                     if (ordered_cursors[i]->docid() == cur_doc) {
                         auto s = ordered_cursors[i]->score();
-                        // score += s;
                         block_upper_bound += s;
                     }
-                    block_upper_bound -=
-                        ordered_cursors[i]->block_max_score() * ordered_cursors[i]->query_weight();
+                    block_upper_bound -= ordered_cursors[i]->block_max_score();
 
                     if (!m_topk.would_enter(score + block_upper_bound)) {
                         break;
@@ -94,7 +93,7 @@ struct block_max_maxscore_query {
         }
     }
 
-    std::vector<std::pair<float, uint64_t>> const& topk() const { return m_topk.topk(); }
+    std::vector<typename topk_queue::entry_type> const& topk() const { return m_topk.topk(); }
 
   private:
     topk_queue& m_topk;

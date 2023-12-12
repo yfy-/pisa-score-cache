@@ -1,14 +1,15 @@
 #pragma once
 
+#include <oneapi/tbb/global_control.h>
+
 #include "app.hpp"
 #include "pisa/reorder_docids.hpp"
-#include "tbb/task_scheduler_init.h"
 
 namespace pisa {
 
 auto reorder_docids(ReorderDocuments args) -> int
 {
-    tbb::task_scheduler_init init(args.threads());
+    tbb::global_control c(oneapi::tbb::global_control::max_allowed_parallelism, 2);
     try {
         if (args.bp()) {
             return recursive_graph_bisection(RecursiveGraphBisectionOptions{

@@ -1,15 +1,15 @@
-name: Docker
+name: Publish Docker
 on:
   push:
     branches: [ master ]
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  docker:
+    runs-on: ubuntu-22.04
 
     steps:
     - name: Trigger docker build
-      shell: bash	
+      shell: bash
       run: |
             curl -s -X POST \
             -H "Content-Type:application/json" \

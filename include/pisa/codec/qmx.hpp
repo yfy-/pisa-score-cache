@@ -5,8 +5,8 @@
 
 namespace pisa {
 struct qmx_block {
-    static const uint64_t block_size = 128;
-    static const uint64_t overflow = 512;
+    static constexpr std::uint64_t block_size = 128;
+    static constexpr std::uint64_t overflow = 512;
 
     static void encode(uint32_t const* in, uint32_t sum_of_values, size_t n, std::vector<uint8_t>& out)
     {
@@ -17,12 +17,19 @@ struct qmx_block {
             return;
         }
         thread_local QMX::compress_integer_qmx_improved qmx_codec;
-        thread_local std::vector<uint8_t> buf(2 * n * sizeof(uint32_t) + overflow);
+        thread_local std::vector<std::uint8_t> buf(2 * n * sizeof(uint32_t) + overflow);
 
         size_t out_len = qmx_codec.encode(buf.data(), buf.size(), in, n);
         TightVariableByte::encode_single(out_len, out);
         out.insert(out.end(), buf.data(), buf.data() + out_len);
     }
+
+    /**
+     * NOTE: In order to be sure to avoid undefined behavior, `in` must be padded with 15 bytes
+     * because of 16-byte SIMD reads that could be called with the address of the last byte.
+     * This is NOT enforced by `encode`, because it would be very wasteful to add 15 bytes to each
+     * block. Instead, the padding is added to the index, after all postings.
+     */
     static uint8_t const* decode(uint8_t const* in, uint32_t* out, uint32_t sum_of_values, size_t n)
     {
         static QMX::compress_integer_qmx_improved qmx_codec;  // decodeBlock is thread-safe

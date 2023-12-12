@@ -1,6 +1,7 @@
 #pragma once
 
 #include "bit_vector.hpp"
+#include "bit_vector_builder.hpp"
 
 #include "codec/compact_elias_fano.hpp"
 
@@ -26,11 +27,15 @@ class bitvector_collection {
         void build(bitvector_collection& sq)
         {
             sq.m_size = m_endpoints.size() - 1;
+            // padding is necessary to not read after buffer
+            m_bitvectors.append_bits(0, 64);
             bit_vector(&m_bitvectors).swap(sq.m_bitvectors);
 
             bit_vector_builder bvb;
             compact_elias_fano::write(
                 bvb, m_endpoints.begin(), m_bitvectors.size(), sq.m_size, m_params);
+            // padding is necessary to not read after buffer
+            bvb.append_bits(0, 64);
             bit_vector(&bvb).swap(sq.m_endpoints);
         }
 

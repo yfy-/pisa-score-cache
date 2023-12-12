@@ -1,3 +1,4 @@
+#include <filesystem>
 #include <string>
 
 #include <CLI/CLI.hpp>
@@ -5,6 +6,7 @@
 #include <spdlog/spdlog.h>
 #include <tbb/global_control.h>
 
+#include "app.hpp"
 #include "forward_index_builder.hpp"
 #include "parser.hpp"
 #include "query/term_processor.hpp"
@@ -14,9 +16,9 @@ using namespace pisa;
 int main(int argc, char** argv)
 {
     auto valid_basename = [](std::string const& basename) {
-        boost::filesystem::path p(basename);
+        std::filesystem::path p(basename);
         auto parent = p.parent_path();
-        if (not boost::filesystem::exists(parent) or not boost::filesystem::is_directory(parent)) {
+        if (not std::filesystem::exists(parent) or not std::filesystem::is_directory(parent)) {
             return fmt::format(
                 "Basename {} invalid: path {} is not an existing directory",
                 basename,
@@ -28,23 +30,16 @@ int main(int argc, char** argv)
     std::string input_basename;
     std::string output_filename;
     std::string format = "plaintext";
-    size_t threads = std::thread::hardware_concurrency();
     ptrdiff_t batch_size = 100'000;
-    std::optional<std::string> stemmer = std::nullopt;
-    std::optional<std::string> content_parser_type = std::nullopt;
-    bool debug = false;
 
-    CLI::App app{"parse_collection - parse collection and store as forward index."};
+    pisa::App<pisa::arg::LogLevel, pisa::arg::Threads, pisa::arg::Analyzer> app{
+        "parse_collection - parse collection and store as forward index."};
     app.add_option("-o,--output", output_filename, "Forward index filename")
         ->required()
         ->check(valid_basename);
-    app.add_option("-j,--threads", threads, "Thread count");
-    app.add_option(
-        "-b,--batch-size", batch_size, "Number of documents to process in one thread", true);
-    app.add_option("-f,--format", format, "Input format", true);
-    app.add_option("--stemmer", stemmer, "Stemmer type");
-    app.add_option("--content-parser", content_parser_type, "Content parser type");
-    app.add_flag("--debug", debug, "Print debug messages");
+    app.add_option("-b,--batch-size", batch_size, "Number of documents to process in one thread")
+        ->capture_default_str();
+    app.add_option("-f,--format", format, "Input format")->capture_default_str();
 
     size_t batch_count, document_count;
     CLI::App* merge_cmd = app.add_subcommand(
@@ -58,12 +53,10 @@ int main(int argc, char** argv)
 
     CLI11_PARSE(app, argc, argv);
 
-    if (debug) {
-        spdlog::set_level(spdlog::level::debug);
-    }
+    spdlog::set_level(app.log_level());
 
-    tbb::global_control control(tbb::global_control::max_allowed_parallelism, threads + 1);
-    spdlog::info("Number of worker threads: {}", threads);
+    tbb::global_control control(tbb::global_control::max_allowed_parallelism, app.threads() + 1);
+    spdlog::info("Number of worker threads: {}", app.threads());
 
     try {
         Forward_Index_Builder builder;
@@ -74,10 +67,9 @@ int main(int argc, char** argv)
                 std::cin,
                 output_filename,
                 record_parser(format, std::cin),
-                term_processor_builder(stemmer),
-                content_parser(content_parser_type),
+                std::make_shared<TextAnalyzer>(app.text_analyzer()),
                 batch_size,
-                threads);
+                app.threads() + 1);
         }
     } catch (std::exception& err) {
         spdlog::error(err.what());

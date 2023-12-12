@@ -1,12 +1,13 @@
 #pragma once
 
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <optional>
 #include <string_view>
 #include <vector>
 
-#include <boost/filesystem.hpp>
 #include <fmt/format.h>
 #include <gsl/gsl_assert>
 #include <gsl/span>
@@ -151,8 +152,8 @@ struct Payload_Vector_Buffer {
 
     [[nodiscard]] static auto from_file(std::string const& filename) -> Payload_Vector_Buffer
     {
-        boost::system::error_code ec;
-        auto file_size = boost::filesystem::file_size(boost::filesystem::path(filename));
+        std::error_code ec;
+        auto file_size = std::filesystem::file_size(std::filesystem::path(filename));
         std::ifstream is(filename);
 
         size_type len;

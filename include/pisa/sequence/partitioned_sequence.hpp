@@ -1,11 +1,12 @@
 #pragma once
 
-#include "tbb/task_group.h"
+#include <deque>
 #include <stdexcept>
+
+#include <tbb/task_group.h>
 
 #include "codec/compact_elias_fano.hpp"
 #include "codec/integer_codes.hpp"
-#include "configuration.hpp"
 #include "global_parameters.hpp"
 #include "optimal_partition.hpp"
 #include "sequence/indexed_sequence.hpp"
@@ -340,8 +341,6 @@ struct partitioned_sequence {
         double eps3 = 0.01)
     {
         std::vector<uint32_t> partition;
-
-        auto const& conf = configuration::get();
 
         if (base_sequence_type::bitsize(params, universe, n) < 2 * fix_cost) {
             partition.push_back(n);

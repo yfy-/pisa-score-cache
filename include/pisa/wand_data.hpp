@@ -3,8 +3,8 @@
 #include <algorithm>
 #include <numeric>
 #include <unordered_set>
+#include <variant>
 
-#include "boost/variant.hpp"
 #include "spdlog/spdlog.h"
 
 #include "binary_collection.hpp"
@@ -190,7 +190,7 @@ class wand_data {
     MemorySource m_source;
 };
 
-void create_wand_data(
+inline void create_wand_data(
     std::string const& output,
     std::string const& input_basename,
     std::optional<std::string> const& global_input_basename,
@@ -243,4 +243,5 @@ void create_wand_data(
     mapper::freeze(wdata, output.c_str());
   }
 }
+
 }  // namespace pisa

@@ -1,8 +1,11 @@
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY  ${CMAKE_BINARY_DIR}/test)
 
-list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../external/Catch2/contrib)	
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../external/Catch2/contrib)
 include(CTest)
 include(Catch)
+
+add_library(testlib in_memory_index.cpp)
+target_link_libraries(testlib pisa)
 
 file(GLOB TEST_SOURCES test_*.cpp)
 foreach(TEST_SRC ${TEST_SOURCES})
@@ -19,5 +22,8 @@ foreach(TEST_SRC ${TEST_SOURCES})
     add_coverage(${TEST_SRC_NAME})
   endif()
 endforeach(TEST_SRC)
+
+target_link_libraries(test_intersection testlib)
+target_link_libraries(test_cursors testlib)
 
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/test_data DESTINATION ${CMAKE_CURRENT_BINARY_DIR})

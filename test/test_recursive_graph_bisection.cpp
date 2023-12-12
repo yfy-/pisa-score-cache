@@ -4,6 +4,7 @@
 
 #include "pisa/forward_index_builder.hpp"
 #include "pisa/invert.hpp"
+#include "pisa/parser.hpp"
 #include "pisa/reorder_docids.hpp"
 #include "pisa/temporary_directory.hpp"
 #include "pisa_config.hpp"
@@ -49,7 +50,7 @@ void compare_strcolls(StrColl const& expected, StrColl const& actual)
 
 TEST_CASE("Reorder documents with BP")
 {
-    Temporary_Directory tmp;
+    pisa::TemporaryDirectory tmp;
 
     auto next_record = [](std::istream& in) -> std::optional<Document_Record> {
         Plaintext_Record record;
@@ -57,9 +58,6 @@ TEST_CASE("Reorder documents with BP")
             return Document_Record(record.trecid(), record.content(), record.url());
         }
         return std::nullopt;
-    };
-    auto id = [] {
-        return [](std::string&& term) -> std::string { return std::forward<std::string>(term); };
     };
 
     auto fwd_path = (tmp.path() / "fwd").string();
@@ -70,16 +68,24 @@ TEST_CASE("Reorder documents with BP")
     GIVEN("Built a forward index and inverted")
     {
         std::string collection_input(PISA_SOURCE_DIR "/test/test_data/clueweb1k.plaintext");
-        REQUIRE(boost::filesystem::exists(boost::filesystem::path(collection_input)) == true);
+        REQUIRE(std::filesystem::exists(std::filesystem::path(collection_input)) == true);
         int thread_count = 2;
         int batch_size = 1000;
+        pisa::invert::InvertParams params;
+        params.num_threads = thread_count;
+        params.batch_size = batch_size;
 
         std::ifstream is(collection_input);
         Forward_Index_Builder builder;
         builder.build(
-            is, fwd_path, next_record, id, parse_plaintext_content, batch_size, thread_count);
+            is,
+            fwd_path,
+            next_record,
+            std::make_shared<TextAnalyzer>(std::make_unique<WhitespaceTokenizer>()),
+            batch_size,
+            thread_count);
 
-        pisa::invert::invert_forward_index(fwd_path, inv_path, batch_size, thread_count);
+        pisa::invert::invert_forward_index(fwd_path, inv_path, params);
 
         WHEN("Reordered documents with BP")
         {

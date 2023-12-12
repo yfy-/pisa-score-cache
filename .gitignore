@@ -26,10 +26,7 @@ node_modules
 
 .clangd/
 
-# gtags
-GPATH
-GRTAGS
-GTAGS
-
-# Emacs
-.dir-locals.el
+# Latex in documentation
+*.aux
+*.log
+docs/**/*.pdf

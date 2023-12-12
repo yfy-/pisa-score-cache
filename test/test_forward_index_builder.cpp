@@ -2,19 +2,22 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <filesystem>
 #include <string>
 
-#include <boost/filesystem.hpp>
 #include <catch2/catch.hpp>
 #include <gsl/span>
 
+#include "binary_collection.hpp"
 #include "filesystem.hpp"
 #include "forward_index_builder.hpp"
+#include "parser.hpp"
 #include "parsing/html.hpp"
 #include "pisa_config.hpp"
 #include "temporary_directory.hpp"
+#include "text_analyzer.hpp"
+#include "tokenizer.hpp"
 
-using namespace boost::filesystem;
 using namespace pisa;
 
 TEST_CASE("Batch file name", "[parsing][forward_index]")
@@ -89,8 +92,6 @@ void write_lines(std::string const& filename, gsl::span<T>&& elements)
 
 TEST_CASE("Build forward index batch", "[parsing][forward_index]")
 {
-    auto identity = [](std::string const& term) -> std::string { return term; };
-
     GIVEN("a few test records")
     {
         std::vector<Document_Record> records{
@@ -102,12 +103,12 @@ TEST_CASE("Build forward index batch", "[parsing][forward_index]")
                 "Doc14", "curabitur a justo vitae turpis feugiat molestie eu ac nunc", "")};
         WHEN("write a batch to temp directory")
         {
-            Temporary_Directory tmpdir;
+            pisa::TemporaryDirectory tmpdir;
             auto output_file = tmpdir.path() / "fwd";
             Forward_Index_Builder::Batch_Process bp{
                 7, records, Document_Id{10}, output_file.string()};
             Forward_Index_Builder builder;
-            builder.run(bp, identity, parse_plaintext_content);
+            builder.run(bp, TextAnalyzer(std::make_unique<WhitespaceTokenizer>()));
             THEN("documents are in check")
             {
                 std::vector<std::string> expected_documents{
@@ -166,11 +167,12 @@ void write_batch(
 
 TEST_CASE("Merge forward index batches", "[parsing][forward_index]")
 {
-    Temporary_Directory tmpdir;
+    pisa::TemporaryDirectory tmpdir;
     auto dir = tmpdir.path();
     GIVEN("Three batches on disk")
     {
-        std::vector<path> batch_paths{dir / "fwd.batch.0", dir / "fwd.batch.1", dir / "fwd.batch.2"};
+        std::vector<std::filesystem::path> batch_paths{
+            dir / "fwd.batch.0", dir / "fwd.batch.1", dir / "fwd.batch.2"};
         write_batch(
             batch_paths[0].string(),
             {"Doc10", "Doc11"},
@@ -325,12 +327,12 @@ TEST_CASE("Build forward index", "[parsing][forward_index][integration]")
     GIVEN("A plaintext collection file")
     {
         std::string input(PISA_SOURCE_DIR "/test/test_data/clueweb1k.plaintext");
-        REQUIRE(boost::filesystem::exists(boost::filesystem::path(input)) == true);
+        REQUIRE(std::filesystem::exists(std::filesystem::path(input)) == true);
         int thread_count = GENERATE(2, 8);
         int batch_size = GENERATE(123, 1000);
         WHEN("Build a forward index")
         {
-            Temporary_Directory tmpdir;
+            pisa::TemporaryDirectory tmpdir;
             auto dir = tmpdir.path();
             std::string output = (dir / "fwd").string();
 
@@ -340,12 +342,7 @@ TEST_CASE("Build forward index", "[parsing][forward_index][integration]")
                 is,
                 output,
                 next_record,
-                [] {
-                    return [](std::string&& term) -> std::string {
-                        return std::forward<std::string>(term);
-                    };
-                },
-                parse_plaintext_content,
+                std::make_shared<TextAnalyzer>(std::make_unique<EnglishTokenizer>()),
                 batch_size,
                 thread_count);
 
@@ -367,7 +364,7 @@ TEST_CASE("Build forward index", "[parsing][forward_index][integration]")
                     std::istringstream content_stream(record->content());
                     std::string term;
                     while (content_stream >> term) {
-                        TermTokenizer tok(term);
+                        EnglishTokenStream tok(term);
                         std::for_each(tok.begin(), tok.end(), [&original_body](auto term) {
                             original_body.push_back(std::move(term));
                         });

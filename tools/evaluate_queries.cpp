@@ -15,6 +15,7 @@
 #include <tbb/parallel_for.h>
 
 #include "accumulator/lazy_accumulator.hpp"
+#include "accumulator/simple_accumulator.hpp"
 #include "app.hpp"
 #include "cursor/block_max_scored_cursor.hpp"
 #include "cursor/max_scored_cursor.hpp"
@@ -41,6 +42,7 @@ void evaluate_queries(
     uint64_t k,
     std::string const& documents_filename,
     ScorerParams const& scorer_params,
+    const bool weighted,
     std::string const& run_id,
     std::string const& iteration)
 {
@@ -48,13 +50,13 @@ void evaluate_queries(
     WandType const wdata(MemorySource::mapped_file(wand_data_filename));
 
     auto scorer = scorer::from_params(scorer_params, wdata);
-    std::function<std::vector<std::pair<float, uint64_t>>(Query)> query_fun;
+    std::function<std::vector<typename topk_queue::entry_type>(Query)> query_fun;
 
     if (query_type == "wand") {
         query_fun = [&](Query query) {
             topk_queue topk(k);
             wand_query wand_q(topk);
-            wand_q(make_max_scored_cursors(index, wdata, *scorer, query), index.num_docs());
+            wand_q(make_max_scored_cursors(index, wdata, *scorer, query, weighted), index.num_docs());
             topk.finalize();
             return topk.topk();
         };
@@ -63,7 +65,8 @@ void evaluate_queries(
             topk_queue topk(k);
             block_max_wand_query block_max_wand_q(topk);
             block_max_wand_q(
-                make_block_max_scored_cursors(index, wdata, *scorer, query), index.num_docs());
+                make_block_max_scored_cursors(index, wdata, *scorer, query, weighted),
+                index.num_docs());
             topk.finalize();
             return topk.topk();
         };
@@ -72,7 +75,8 @@ void evaluate_queries(
             topk_queue topk(k);
             block_max_maxscore_query block_max_maxscore_q(topk);
             block_max_maxscore_q(
-                make_block_max_scored_cursors(index, wdata, *scorer, query), index.num_docs());
+                make_block_max_scored_cursors(index, wdata, *scorer, query, weighted),
+                index.num_docs());
             topk.finalize();
             return topk.topk();
         };
@@ -81,7 +85,8 @@ void evaluate_queries(
             topk_queue topk(k);
             block_max_ranked_and_query block_max_ranked_and_q(topk);
             block_max_ranked_and_q(
-                make_block_max_scored_cursors(index, wdata, *scorer, query), index.num_docs());
+                make_block_max_scored_cursors(index, wdata, *scorer, query, weighted),
+                index.num_docs());
             topk.finalize();
             return topk.topk();
         };
@@ -89,7 +94,7 @@ void evaluate_queries(
         query_fun = [&](Query query) {
             topk_queue topk(k);
             ranked_and_query ranked_and_q(topk);
-            ranked_and_q(make_scored_cursors(index, *scorer, query), index.num_docs());
+            ranked_and_q(make_scored_cursors(index, *scorer, query, weighted), index.num_docs());
             topk.finalize();
             return topk.topk();
         };
@@ -97,7 +102,7 @@ void evaluate_queries(
         query_fun = [&](Query query) {
             topk_queue topk(k);
             ranked_or_query ranked_or_q(topk);
-            ranked_or_q(make_scored_cursors(index, *scorer, query), index.num_docs());
+            ranked_or_q(make_scored_cursors(index, *scorer, query, weighted), index.num_docs());
             topk.finalize();
             return topk.topk();
         };
@@ -105,25 +110,26 @@ void evaluate_queries(
         query_fun = [&](Query query) {
             topk_queue topk(k);
             maxscore_query maxscore_q(topk);
-            maxscore_q(make_max_scored_cursors(index, wdata, *scorer, query), index.num_docs());
+            maxscore_q(
+                make_max_scored_cursors(index, wdata, *scorer, query, weighted), index.num_docs());
             topk.finalize();
             return topk.topk();
         };
     } else if (query_type == "ranked_or_taat") {
-        query_fun = [&, accumulator = Simple_Accumulator(index.num_docs())](Query query) mutable {
+        query_fun = [&, accumulator = SimpleAccumulator(index.num_docs())](Query query) mutable {
             topk_queue topk(k);
             ranked_or_taat_query ranked_or_taat_q(topk);
             ranked_or_taat_q(
-                make_scored_cursors(index, *scorer, query), index.num_docs(), accumulator);
+                make_scored_cursors(index, *scorer, query, weighted), index.num_docs(), accumulator);
             topk.finalize();
             return topk.topk();
         };
     } else if (query_type == "ranked_or_taat_lazy") {
-        query_fun = [&, accumulator = Lazy_Accumulator<4>(index.num_docs())](Query query) mutable {
+        query_fun = [&, accumulator = LazyAccumulator<4>(index.num_docs())](Query query) mutable {
             topk_queue topk(k);
             ranked_or_taat_query ranked_or_taat_q(topk);
             ranked_or_taat_q(
-                make_scored_cursors(index, *scorer, query), index.num_docs(), accumulator);
+                make_scored_cursors(index, *scorer, query, weighted), index.num_docs(), accumulator);
             topk.finalize();
             return topk.topk();
         };
@@ -134,7 +140,7 @@ void evaluate_queries(
     auto source = std::make_shared<mio::mmap_source>(documents_filename.c_str());
     auto docmap = Payload_Vector<>::from(*source);
 
-    std::vector<std::vector<std::pair<float, uint64_t>>> raw_results(queries.size());
+    std::vector<std::vector<typename topk_queue::entry_type>> raw_results(queries.size());
     auto start_batch = std::chrono::steady_clock::now();
     tbb::parallel_for(size_t(0), queries.size(), [&, query_fun](size_t query_idx) {
         raw_results[query_idx] = query_fun(queries[query_idx]);
@@ -146,11 +152,11 @@ void evaluate_queries(
         auto qid = queries[query_idx].id;
         for (auto&& [rank, result]: enumerate(results)) {
             std::cout << fmt::format(
-                "{}\t{}\t{}\t{}\t{}\t{}\n",
+                "{} {} {} {} {} {}\n",
                 qid.value_or(std::to_string(query_idx)),
                 iteration,
                 docmap[result.second],
-                rank,
+                rank + 1,
                 result.first,
                 run_id);
         }
@@ -182,7 +188,8 @@ int main(int argc, const char** argv)
         arg::Algorithm,
         arg::Scorer,
         arg::Thresholds,
-        arg::Threads>
+        arg::Threads,
+        arg::LogLevel>
         app{"Retrieves query results in TREC format."};
     app.add_option("-r,--run", run_id, "Run identifier");
     app.add_option("--documents", documents_file, "Document lexicon")->required();
@@ -190,6 +197,7 @@ int main(int argc, const char** argv)
 
     CLI11_PARSE(app, argc, argv);
 
+    spdlog::set_level(app.log_level());
     tbb::global_control control(tbb::global_control::max_allowed_parallelism, app.threads() + 1);
     spdlog::info("Number of worker threads: {}", app.threads());
 
@@ -209,6 +217,7 @@ int main(int argc, const char** argv)
         app.k(),
         documents_file,
         app.scorer_params(),
+        app.weighted(),
         run_id,
         iteration);
 

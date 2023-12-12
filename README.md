@@ -8,7 +8,6 @@
 [![codecov](https://codecov.io/gh/pisa-engine/pisa/branch/master/graph/badge.svg)](https://codecov.io/gh/pisa-engine/pisa)
 
 
-[![Codacy Badge](https://api.codacy.com/project/badge/Grade/83cbd7128c084994a87fb8394bd91a16)](https://www.codacy.com/app/amallia/pisa?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=pisa-engine/pisa&amp;utm_campaign=Badge_Grade)
 [![GitHub issues](https://img.shields.io/github/issues/pisa-engine/pisa.svg)](https://github.com/pisa-engine/pisa/issues)
 [![GitHub forks](https://img.shields.io/github/forks/pisa-engine/pisa.svg)](https://github.com/pisa-engine/pisa/network)
 [![GitHub stars](https://img.shields.io/github/stars/pisa-engine/pisa.svg)](https://github.com/pisa-engine/pisa/stargazers)
@@ -123,6 +122,8 @@ resources:
 2. The accompanying [Docker image](https://github.com/osirrc/pisa-docker) which allows the experiments from above to be replicated.
 3. The [documentation](https://pisa.readthedocs.io/en/latest/).
 4. Drop in to our [Slack channel](https://join.slack.com/t/pisa-engine/shared_invite/zt-dbxrm1mf-RtQMZTqxxlhOJsv3GHUErw) and say hi!
+
+## Contributing
 
 If you want to get involved with PISA, please check out our [Contributing](https://github.com/pisa-engine/pisa/blob/master/.github/CONTRIBUTING.md) page.
 

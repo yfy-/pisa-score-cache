@@ -1,11 +1,8 @@
 #pragma once
 
+#include "accumulator/partial_score_accumulator.hpp"
+#include "concepts.hpp"
 #include "query/queries.hpp"
-#include "topk_queue.hpp"
-#include "util/intrinsics.hpp"
-
-#include "accumulator/simple_accumulator.hpp"
-
 #include "topk_queue.hpp"
 
 namespace pisa {
@@ -15,13 +12,13 @@ class ranked_or_taat_query {
     explicit ranked_or_taat_query(topk_queue& topk) : m_topk(topk) {}
 
     template <typename CursorRange, typename Acc>
+    PISA_REQUIRES(PartialScoreAccumulator<Acc>)
     void operator()(CursorRange&& cursors, uint64_t max_docid, Acc&& accumulator)
     {
-        using Cursor = typename std::decay_t<CursorRange>::value_type;
         if (cursors.empty()) {
             return;
         }
-        accumulator.init();
+        accumulator.reset();
 
         for (auto&& cursor: cursors) {
             while (cursor.docid() < max_docid) {
@@ -29,10 +26,10 @@ class ranked_or_taat_query {
                 cursor.next();
             }
         }
-        accumulator.aggregate(m_topk);
+        accumulator.collect(m_topk);
     }
 
-    std::vector<std::pair<float, uint64_t>> const& topk() const { return m_topk.topk(); }
+    std::vector<typename topk_queue::entry_type> const& topk() const { return m_topk.topk(); }
 
   private:
     topk_queue& m_topk;

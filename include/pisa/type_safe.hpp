@@ -2,6 +2,9 @@
 
 #include <cstdint>
 #include <functional>
+#include <ostream>
+
+#include <fmt/format.h>
 
 namespace pisa {
 
@@ -123,3 +126,12 @@ namespace literals {
 }  // namespace literals
 
 }  // namespace pisa
+
+template <class Tag, class T, T default_value>
+struct fmt::formatter<pisa::Integer<Tag, T, default_value>>: public fmt::formatter<T> {
+    template <typename FormatContext>
+    auto format(pisa::Integer<Tag, T, default_value> value, FormatContext& ctx) const
+    {
+        return formatter<T>::format(value.as_int(), ctx);
+    }
+};

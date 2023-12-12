@@ -6,30 +6,30 @@
 #include <iostream>
 #include <string>
 
-#include <boost/filesystem.hpp>
 #include <fmt/ostream.h>
 #include <gsl/span>
 #include <range/v3/action/transform.hpp>
 #include <range/v3/algorithm/stable_sort.hpp>
+#include <range/v3/range/conversion.hpp>
 #include <range/v3/view/drop.hpp>
 #include <range/v3/view/iota.hpp>
 #include <range/v3/view/stride.hpp>
+#include <range/v3/view/transform.hpp>
 
 #include "binary_freq_collection.hpp"
 #include "filesystem.hpp"
 #include "forward_index_builder.hpp"
+#include "invert.hpp"
+#include "parser.hpp"
 #include "payload_vector.hpp"
 #include "pisa_config.hpp"
 #include "sharding.hpp"
 #include "temporary_directory.hpp"
 
-using namespace boost::filesystem;
 using namespace pisa;
 using namespace pisa::literals;
 
-using posting_vector_type = std::vector<std::pair<Term_Id, Document_Id>>;
-using iterator_type = decltype(std::declval<posting_vector_type>().begin());
-using index_type = invert::Inverted_Index<iterator_type>;
+using index_type = invert::Inverted_Index;
 
 [[nodiscard]] auto next_plaintext_record(std::istream& in) -> std::optional<Document_Record>
 {
@@ -50,7 +50,7 @@ TEST_CASE("Expand shard", "[sharding]")
 
 TEST_CASE("Resolve shards", "[sharding]")
 {
-    Temporary_Directory dir;
+    pisa::TemporaryDirectory dir;
     SECTION("No suffix")
     {
         for (auto f: std::vector<std::string>{"shard.000", "shard.001", "shard.002"}) {
@@ -81,8 +81,8 @@ TEST_CASE("mapping_from_files", "[invert][unit]")
     shards.push_back(std::make_unique<std::istringstream>("D00\nD01\nD02"));
     shards.push_back(std::make_unique<std::istringstream>("D02\nD03\nD04"));
     shards.push_back(std::make_unique<std::istringstream>("D06\nD07\nD08\nD09\nD010\nD11"));
-    auto stream_pointers =
-        ranges::views::transform(shards, [](auto const& s) { return s.get(); }) | ranges::to_vector;
+    auto stream_pointers = ranges::views::transform(shards, [](auto const& s) { return s.get(); })
+        | ranges::to<std::vector>();
     REQUIRE(
         mapping_from_files(&full, gsl::span<std::istream*>(stream_pointers)).as_vector()
         == std::vector<Shard_Id>{0_s, 0_s, 0_s, 1_s, 1_s, 0_s, 2_s, 2_s, 2_s, 2_s, 2_s, 2_s});
@@ -102,7 +102,7 @@ TEST_CASE("create_random_mapping", "[invert][unit]")
 
     REQUIRE(
         documents.as_vector()
-        == ranges::to_vector(ranges::views::iota(Document_Id{}, Document_Id{1000U})));
+        == ranges::to<std::vector>(ranges::views::iota(Document_Id{}, Document_Id{1000U})));
     REQUIRE(
         counts.as_vector() == std::vector<int>{77, 77, 77, 77, 77, 77, 77, 77, 77, 77, 77, 77, 76});
 }
@@ -129,10 +129,7 @@ void build_fwd_index(std::string const& output)
         is,
         output,
         next_plaintext_record,
-        [] {
-            return [](std::string&& term) -> std::string { return std::forward<std::string>(term); };
-        },
-        pisa::parse_plaintext_content,
+        std::make_shared<TextAnalyzer>(std::make_unique<WhitespaceTokenizer>()),
         20'000,
         2);
 }
@@ -152,7 +149,7 @@ TEST_CASE("copy_sequence", "[invert][unit]")
 {
     GIVEN("A test forward index")
     {
-        Temporary_Directory dir;
+        pisa::TemporaryDirectory dir;
         std::string fwd_basename = (dir.path() / "fwd").string();
         std::string output = (dir.path() / "copy").string();
         int document_count = 1'000;
@@ -183,7 +180,7 @@ TEST_CASE("Rearrange sequences", "[invert][integration]")
 {
     GIVEN("A test forward index")
     {
-        Temporary_Directory dir;
+        pisa::TemporaryDirectory dir;
         std::string fwd_basename = (dir.path() / "fwd").string();
         std::string output_basename = (dir.path() / "shards").string();
         int document_count = 1'000;
@@ -213,7 +210,7 @@ TEST_CASE("Rearrange sequences", "[invert][integration]")
                 expected =
                     ranges::views::transform(
                         sorted_mapping, [&](auto&& entry) { return expected[entry.first.as_int()]; })
-                    | ranges::to_vector;
+                    | ranges::to<std::vector>();
 
                 auto pos = expected.begin();
                 for (auto shard: shard_ids) {
@@ -239,7 +236,7 @@ TEST_CASE("partition_fwd_index", "[invert][integration]")
 {
     GIVEN("A test forward index")
     {
-        Temporary_Directory dir;
+        pisa::TemporaryDirectory dir;
         std::string fwd_basename = (dir.path() / "fwd").string();
         std::string output_basename = (dir.path() / "shards").string();
         int document_count = 1'000;
@@ -277,7 +274,6 @@ TEST_CASE("partition_fwd_index", "[invert][integration]")
                     shard_terms.push_back(io::read_string_vector(
                         fmt::format("{}.{:03d}.terms", output_basename, shard.as_int()).c_str()));
                     shard_iterators.push_back(++shards.back().begin());
-                    shards.back();
                 }
                 Shard_Id shard = 0_s;
                 for (auto doc: ranges::views::iota(0_d, Document_Id{document_count})) {

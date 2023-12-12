@@ -1,12 +1,19 @@
 #pragma once
 
-#include "query/queries.hpp"
-#include "topk_queue.hpp"
 #include <string>
 #include <vector>
 
+#include "query/queries.hpp"
+#include "topk_queue.hpp"
+
 namespace pisa {
 
+/**
+ * Top-k disjunctive retrieval.
+ *
+ * Returns the top-k highest scored documents matching at least one query term.
+ * This algorithm exhaustively scores every single document in the posting list union.
+ */
 struct ranked_or_query {
     explicit ranked_or_query(topk_queue& topk) : m_topk(topk) {}
 
@@ -40,7 +47,7 @@ struct ranked_or_query {
         }
     }
 
-    std::vector<std::pair<float, uint64_t>> const& topk() const { return m_topk.topk(); }
+    std::vector<typename topk_queue::entry_type> const& topk() const { return m_topk.topk(); }
 
   private:
     topk_queue& m_topk;

@@ -36,8 +36,7 @@ struct block_max_ranked_and_query {
             double block_upper_bound = 0;
             for (size_t block = 0; block < ordered_cursors.size(); ++block) {
                 ordered_cursors[block]->block_max_next_geq(candidate);
-                block_upper_bound += ordered_cursors[block]->block_max_score()
-                    * ordered_cursors[block]->query_weight();
+                block_upper_bound += ordered_cursors[block]->block_max_score();
             }
             if (m_topk.would_enter(block_upper_bound)) {
                 for (; candidate_list < ordered_cursors.size(); ++candidate_list) {
@@ -78,7 +77,7 @@ struct block_max_ranked_and_query {
         }
     }
 
-    std::vector<std::pair<float, uint64_t>> const& topk() const { return m_topk.topk(); }
+    std::vector<typename topk_queue::entry_type> const& topk() const { return m_topk.topk(); }
 
     topk_queue& get_topk() { return m_topk; }
 

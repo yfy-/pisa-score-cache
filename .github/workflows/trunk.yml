@@ -1,0 +1,110 @@
+name: Trunk
+
+on:
+  push:
+    branches: [ master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        compiler: [gcc10, gcc11, gcc12, gcc13, clang15, clang16]
+        build_type: [Debug]
+        standard: [17]
+        sanitizers: [OFF]
+        include:
+          - compiler: gcc13   # Extra test for C++20
+            standard: 20
+          - compiler: gcc13   # Extra test for Release
+            build_type: Release
+          - compiler: clang16 # Extra test for C++20
+            standard: 20
+            sanitizers: ON    # Also run with sanitizers
+
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        submodules: true
+
+    - name: Bulid docker image
+      shell: bash
+      run: |
+        docker build \
+          --build-arg CXX_STANDARD=${{matrix.standard}} \
+          --build-arg USE_SANITIZERS=${{matrix.sanitizers}} \
+          -t pisa -f- . < "${{runner.workspace}}/pisa/test/docker/${{matrix.compiler}}/Dockerfile"
+
+    - name: Test
+      shell: bash
+      run: docker run pisa ctest -VV -j 4
+
+  mac_tests:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        name: [macos-xcode-13.2]
+        include:
+          - name: macos-xcode-13.2
+            os: macos-latest
+            compiler: "xcode"
+            version: "13.2"
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Install (macOS)
+      if: runner.os == 'macOS'
+      run: |
+          brew install autoconf automake libtool cmake
+          sudo xcode-select -switch /Applications/Xcode_${{ matrix.version }}.app
+          echo "CC=$(xcrun -f clang)" >> $GITHUB_ENV
+          echo "CXX=$(xcrun -f clang++)" >> $GITHUB_ENV
+          echo "SDKROOT=$(xcodebuild -version -sdk macosx Path)" >> $GITHUB_ENV
+          echo "PATH=$(dirname $(xcrun -f clang)):$PATH" >> $GITHUB_ENV
+
+    - name: Create Build Environment
+      shell: bash
+      run: cmake -E make_directory ${{runner.workspace}}/build
+
+    - name: Configure
+      shell: bash
+      working-directory: ${{runner.workspace}}/build
+      run: cmake "$GITHUB_WORKSPACE" -DCMAKE_BUILD_TYPE=Debug -DPISA_BUILD_TOOLS=ON -DPISA_CI_BUILD=ON ..
+
+    - name: Build
+      shell: bash
+      working-directory: ${{runner.workspace}}/build
+      run: cmake --build . --config Debug -- -j 4
+
+    - name: Test
+      shell: bash
+      working-directory: ${{runner.workspace}}/build
+      run: ctest -VV -j 4
+
+  tidy:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        submodules: true
+
+    - name: Bulid docker image
+      shell: bash
+      run: docker build -t pisa -f- . < "${{runner.workspace}}/pisa/test/docker/tidy/Dockerfile"
+
+  system-deps:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        submodules: true
+
+    - name: Bulid docker image
+      shell: bash
+      run: docker build -t pisa -f- . < "${{runner.workspace}}/pisa/test/docker/system-deps/Dockerfile"
+
+    - name: Test
+      shell: bash
+      run: docker run pisa ctest -VV -j 4

@@ -1,34 +1,49 @@
 #pragma once
 
+#include "type_alias.hpp"
 #include "util/likely.hpp"
 #include "util/util.hpp"
+
 #include <algorithm>
 
 namespace pisa {
 
-using Threshold = float;
+/// Top-k document priority queue.
+///
+/// Accumulates (document, score) pairs during a retrieval algorithm.
+/// This is a min heap; once it is full (contains k elements), any new entry
+/// with a score higher than the one on the top of the heap will replace the
+/// min element. Because it is a binary heap, the elements are not sorted;
+/// use `finalize()` member function to sort it before accessing it with
+/// `topk()`.
 struct topk_queue {
-    using entry_type = std::pair<float, uint64_t>;
+    using entry_type = std::pair<Score, DocId>;
 
-    explicit topk_queue(uint64_t k) : m_threshold(0), m_k(k),
-                                      m_threshold_at_k(0.0)
-    { m_q.reserve(m_k + 1); }
-
+    /// Constructs a top-k priority queue with the given intitial threshold.
+    ///
+    /// Note that if the initial threshold is in fact higher than otherwise
+    /// the k-th highest score would be, then some top-k result will be missing
+    /// from the final result, replaced by lower-scoring documents.
+    explicit topk_queue(std::size_t k, Score initial_threshold = 0.0F)
+      : m_k(k), m_initial_threshold(initial_threshold), m_threshold_at_k(0.0)
+    {
+        m_effective_threshold = std::nextafter(m_initial_threshold, 0.0F);
+        m_q.reserve(m_k + 1);
+    }
     topk_queue(topk_queue const&) = default;
     topk_queue(topk_queue&&) noexcept = default;
     topk_queue& operator=(topk_queue const&) = default;
     topk_queue& operator=(topk_queue&&) noexcept = default;
     ~topk_queue() = default;
 
-    [[nodiscard]] constexpr static auto
-    min_heap_order(entry_type const& lhs, entry_type const& rhs) noexcept -> bool
-    {
-        return lhs.first > rhs.first;
-    }
-
-    bool insert(float score) { return insert(score, 0); }
-
-    bool insert(float score, uint64_t docid)
+    /// Inserts a heap entry.
+    ///
+    /// Attempts to inserts an entry with the given score and docid. If the score
+    /// is below the threshold, the entry will **not** be inserted, and `false`
+    /// will be returned. Otherwise, the entry will be inserted, and `true` returned.
+    /// If the heap is full, the entry with the lowest value will be removed, i.e.,
+    /// the heap will maintain its size.
+    auto insert(Score score, DocId docid = 0) -> bool
     {
         if (PISA_UNLIKELY(not would_enter(score))) {
             return false;
@@ -37,19 +52,26 @@ struct topk_queue {
         if (PISA_UNLIKELY(m_q.size() <= m_k)) {
             std::push_heap(m_q.begin(), m_q.end(), min_heap_order);
             if (PISA_UNLIKELY(m_q.size() == m_k)) {
-                m_threshold = m_q.front().first;
-                m_threshold_at_k = m_threshold;
+                m_effective_threshold = m_q.front().first;
+                m_threshold_at_k = m_effective_threshold;
             }
         } else {
-            std::pop_heap(m_q.begin(), m_q.end(), min_heap_order);
+            std::iter_swap(m_q.begin(), std::prev(m_q.end()));
             m_q.pop_back();
-            m_threshold = m_q.front().first;
+            sift_down(m_q.begin(), m_q.end());
+            m_effective_threshold = m_q.front().first;
         }
         return true;
     }
 
-    bool would_enter(float score) const { return score >= m_threshold; }
+    /// Checks if an entry with the given score would be inserted to the queue, according
+    /// to the current threshold.
+    bool would_enter(float score) const { return score > m_effective_threshold; }
 
+    /// Sorts the results in the heap container in the descending score order.
+    ///
+    /// After calling this function, the heap should be no longer modified, as
+    /// the heap order will not be preserved.
     void finalize()
     {
         std::sort_heap(m_q.begin(), m_q.end(), min_heap_order);
@@ -57,36 +79,109 @@ struct topk_queue {
                           m_q.begin(),
                           m_q.end(),
                           0,
-                          [](std::pair<float, uint64_t> l, float r) { return l.first > r; })
+                          [](std::pair<Score, DocId> l, Score r) { return l.first > r; })
             - m_q.begin();
         m_q.resize(size);
     }
 
+    /// Returns a reference to the contents of the heap.
+    ///
+    /// This is intended to be used after calling `finalize()` first, which will sort
+    /// the results in order of descending scores.
     [[nodiscard]] std::vector<entry_type> const& topk() const noexcept { return m_q; }
 
-    void set_threshold(Threshold t) noexcept { m_threshold = t; }
-
-    Threshold threshold() const noexcept { return m_threshold; }
-
-    void clear() noexcept
+    /// Returns the threshold based on the heap state, defined as the score of the `k`-th document,
+    /// or 0.0 if the heap is not full.
+    [[nodiscard]] auto true_threshold() const noexcept -> Score
     {
-        m_q.clear();
-        m_threshold = 0;
+        return capacity() == size() ? m_q.front().first : 0.0;
+    }
+    /// Returns the threshold set at the start (by default 0.0).
+    [[nodiscard]] auto initial_threshold() const noexcept -> Score { return m_initial_threshold; }
+
+    /// Returns the maximum of `true_threshold()` and `initial_threshold()`.
+    [[nodiscard]] auto effective_threshold() const noexcept -> Score
+    {
+        return m_effective_threshold;
     }
 
-    [[nodiscard]] size_t capacity() const noexcept { return m_k; }
+    /// Returns `true` if no documents have been missed up to this point.
+    /// The reason why document could be missed is forcing a threshold that is too high
+    /// (overestimated).
+    [[nodiscard]] auto is_safe() noexcept -> bool
+    {
+        return m_effective_threshold >= m_initial_threshold;
+    }
 
-    [[nodiscard]] size_t size() const noexcept { return m_q.size(); }
+    /// Empties the queue and resets the threshold to 0 (or the given value).
+    void clear(Score initial_threshold = 0.0) noexcept
+    {
+        m_q.clear();
+        m_effective_threshold = std::nextafter(m_initial_threshold, 0.0);
+        m_initial_threshold = initial_threshold;
+    }
+
+    /// The maximum number of entries that can fit in the queue.
+    [[nodiscard]] auto capacity() const noexcept -> std::size_t { return m_k; }
+
+    /// The current number of entries in the queue.
+    [[nodiscard]] auto size() const noexcept -> std::size_t { return m_q.size(); }
 
     [[nodiscard]] Threshold threshold_at_k() const noexcept {
       return m_threshold_at_k;
     }
 
   private:
-    float m_threshold;
-    uint64_t m_k;
+    [[nodiscard]] constexpr static auto
+    min_heap_order(entry_type const& lhs, entry_type const& rhs) noexcept -> bool
+    {
+        return lhs.first > rhs.first;
+    }
+
+    using entry_iterator_type = typename std::vector<entry_type>::iterator;
+
+    /// Sifts down the top element of the heap in `[first, last)`.
+    ///
+    /// For justification for using it instead of STL functions, see
+    /// https://github.com/pisa-engine/pisa/issues/504.
+    static void sift_down(entry_iterator_type first, entry_iterator_type last)
+    {
+        auto cmp = [first](std::size_t lhs, std::size_t rhs) {
+            return (first + lhs)->first > (first + rhs)->first;
+        };
+        auto swap = [first](std::size_t lhs, std::size_t rhs) {
+            return std::iter_swap(first + lhs, first + rhs);
+        };
+
+        auto len = std::distance(first, last);
+        std::size_t idx = 0;
+        std::size_t right, left;
+
+        while ((right = 2 * (idx + 1)) < len) {
+            left = right - 1;
+            auto next = idx;
+            if (cmp(next, left)) {
+                next = left;
+            }
+            if (cmp(next, right)) {
+                next = right;
+            }
+            if (next == idx) {
+                return;
+            }
+            swap(idx, next);
+            idx = next;
+        }
+        if ((left = 2 * idx + 1) < len && cmp(idx, left)) {
+            swap(idx, left);
+        }
+    }
+
+    std::size_t m_k;
+    float m_initial_threshold;
     std::vector<entry_type> m_q;
-    Threshold m_threshold_at_k;
+    float m_effective_threshold;
+    Score m_threshold_at_k;
 };
 
 }  // namespace pisa

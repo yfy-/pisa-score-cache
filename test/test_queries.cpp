@@ -25,7 +25,7 @@ TEST_CASE("Parse query term ids with query id")
 
 TEST_CASE("Compute parsing function")
 {
-    Temporary_Directory tmpdir;
+    pisa::TemporaryDirectory tmpdir;
 
     auto lexfile = tmpdir.path() / "lex";
     encode_payload_vector(
@@ -41,7 +41,8 @@ TEST_CASE("Compute parsing function")
 
     WHEN("No stopwords, terms, or stemmer")
     {
-        auto parse = resolve_query_parser(queries, std::nullopt, std::nullopt, std::nullopt);
+        // Note we don't need a tokenizer because ID parsing does not use it
+        auto parse = resolve_query_parser(queries, nullptr, std::nullopt, std::nullopt, std::nullopt);
         THEN("Parse query IDs")
         {
             parse("1:0 2 4");
@@ -53,7 +54,11 @@ TEST_CASE("Compute parsing function")
     WHEN("With terms and stopwords. No stemmer")
     {
         auto parse = resolve_query_parser(
-            queries, lexfile.string(), stopwords_filename.string(), std::nullopt);
+            queries,
+            std::make_unique<WhitespaceTokenizer>(),
+            lexfile.string(),
+            stopwords_filename.string(),
+            std::nullopt);
         THEN("Parse query IDs")
         {
             parse("1:a he usa");
@@ -64,8 +69,12 @@ TEST_CASE("Compute parsing function")
     }
     WHEN("With terms, stopwords, and stemmer")
     {
-        auto parse =
-            resolve_query_parser(queries, lexfile.string(), stopwords_filename.string(), "porter2");
+        auto parse = resolve_query_parser(
+            queries,
+            std::make_unique<WhitespaceTokenizer>(),
+            lexfile.string(),
+            stopwords_filename.string(),
+            "porter2");
         THEN("Parse query IDs")
         {
             parse("1:a he usa");
@@ -74,11 +83,35 @@ TEST_CASE("Compute parsing function")
             REQUIRE(queries[0].term_weights.empty());
         }
     }
+    WHEN("Parser with whitespace tokenizer")
+    {
+        auto parse = resolve_query_parser(
+            queries,
+            std::make_unique<WhitespaceTokenizer>(),
+            lexfile.string(),
+            std::nullopt,
+            std::nullopt);
+        THEN("Parses usa's as usa's (and does not find it in lexicon)")
+        {
+            parse("1:a he usa's");
+            REQUIRE(queries[0].terms == std::vector<term_id_type>{0, 2});
+        }
+    }
+    WHEN("Parser with English tokenizer")
+    {
+        auto parse = resolve_query_parser(
+            queries, std::make_unique<EnglishTokenizer>(), lexfile.string(), std::nullopt, std::nullopt);
+        THEN("Parses usa's as usa (and finds it in lexicon)")
+        {
+            parse("1:a he usa's");
+            REQUIRE(queries[0].terms == std::vector<term_id_type>{0, 2, 4});
+        }
+    }
 }
 
 TEST_CASE("Load stopwords in term processor with all stopwords present in the lexicon")
 {
-    Temporary_Directory tmpdir;
+    pisa::TemporaryDirectory tmpdir;
     auto lexfile = tmpdir.path() / "lex";
     encode_payload_vector(
         gsl::make_span(std::vector<std::string>{"a", "account", "he", "she", "usa", "world"}))
@@ -96,7 +129,7 @@ TEST_CASE("Load stopwords in term processor with all stopwords present in the le
 
 TEST_CASE("Load stopwords in term processor with some stopwords not present in the lexicon")
 {
-    Temporary_Directory tmpdir;
+    pisa::TemporaryDirectory tmpdir;
     auto lexfile = tmpdir.path() / "lex";
     encode_payload_vector(
         gsl::make_span(std::vector<std::string>{"account", "coffee", "he", "she", "usa", "world"}))
@@ -114,7 +147,7 @@ TEST_CASE("Load stopwords in term processor with some stopwords not present in t
 
 TEST_CASE("Check if term is stopword")
 {
-    Temporary_Directory tmpdir;
+    pisa::TemporaryDirectory tmpdir;
     auto lexfile = tmpdir.path() / "lex";
     encode_payload_vector(
         gsl::make_span(std::vector<std::string>{"account", "coffee", "he", "she", "usa", "world"}))

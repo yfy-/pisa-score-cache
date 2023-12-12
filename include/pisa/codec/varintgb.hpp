@@ -1,10 +1,13 @@
 #pragma once
-#include "codec/block_codecs.hpp"
+
+#include <array>
+#include <cstring>
 #include <vector>
 
 #include "FastPFor/headers/common.h"
 
-using namespace std;
+#include "codec/block_codecs.hpp"
+#include "memory.hpp"
 
 namespace pisa {
 
@@ -37,8 +40,7 @@ class VarIntGB {
                     *out++ = static_cast<uint8_t>(val >> 16);
                     *keyp = static_cast<uint8_t>(2);
                 } else {
-                    // the compiler will do the right thing
-                    *reinterpret_cast<uint32_t*>(out) = val;
+                    bitwise_reinterpret<uint32_t>(out) = val;
                     out += 4;
                     *keyp = static_cast<uint8_t>(3);
                 }
@@ -60,8 +62,7 @@ class VarIntGB {
                     *out++ = static_cast<uint8_t>(val >> 16);
                     *keyp |= static_cast<uint8_t>(2 << 2);
                 } else {
-                    // the compiler will do the right thing
-                    *reinterpret_cast<uint32_t*>(out) = val;
+                    bitwise_reinterpret<uint32_t>(out) = val;
                     out += 4;
                     *keyp |= static_cast<uint8_t>(3 << 2);
                 }
@@ -83,8 +84,7 @@ class VarIntGB {
                     *out++ = static_cast<uint8_t>(val >> 16);
                     *keyp |= static_cast<uint8_t>(2 << 4);
                 } else {
-                    // the compiler will do the right thing
-                    *reinterpret_cast<uint32_t*>(out) = val;
+                    bitwise_reinterpret<uint32_t>(out) = val;
                     out += 4;
                     *keyp |= static_cast<uint8_t>(3 << 4);
                 }
@@ -106,8 +106,7 @@ class VarIntGB {
                     *out++ = static_cast<uint8_t>(val >> 16);
                     *keyp |= static_cast<uint8_t>(2 << 6);
                 } else {
-                    // the compiler will do the right thing
-                    *reinterpret_cast<uint32_t*>(out) = val;
+                    bitwise_reinterpret<uint32_t>(out) = val;
                     out += 4;
                     *keyp |= static_cast<uint8_t>(3 << 6);
                 }
@@ -180,8 +179,6 @@ class VarIntGB {
     }
 
   protected:
-    static uint32_t mask[4];  // { { 0xFF, 0xFFFF, 0xFFFFFF, 0xFFFFFFFF } };
-
     const uint8_t* decodeGroupVarInt(const uint8_t* in, uint32_t* out)
     {
         const uint32_t sel = *in++;
@@ -194,16 +191,16 @@ class VarIntGB {
             return in + 4;
         }
         const uint32_t sel1 = (sel & 3);
-        *out++ = *(reinterpret_cast<const uint32_t*>(in)) & mask[sel1];
+        *out++ = *bitwise_reinterpret<std::uint32_t>(in, sel1 + 1);
         in += sel1 + 1;
         const uint32_t sel2 = ((sel >> 2) & 3);
-        *out++ = *(reinterpret_cast<const uint32_t*>(in)) & mask[sel2];
+        *out++ = *bitwise_reinterpret<std::uint32_t>(in, sel2 + 1);
         in += sel2 + 1;
         const uint32_t sel3 = ((sel >> 4) & 3);
-        *out++ = *(reinterpret_cast<const uint32_t*>(in)) & mask[sel3];
+        *out++ = *bitwise_reinterpret<std::uint32_t>(in, sel3 + 1);
         in += sel3 + 1;
         const uint32_t sel4 = (sel >> 6);
-        *out++ = *(reinterpret_cast<const uint32_t*>(in)) & mask[sel4];
+        *out++ = *bitwise_reinterpret<std::uint32_t>(in, sel4 + 1);
         in += sel4 + 1;
         return in;
     }
@@ -219,27 +216,24 @@ class VarIntGB {
             return in + 4;
         }
         const uint32_t sel1 = (sel & 3);
-        *val += *(reinterpret_cast<const uint32_t*>(in)) & mask[sel1];
+        *val += *bitwise_reinterpret<std::uint32_t>(in, sel1 + 1);
         *out++ = *val;
         in += sel1 + 1;
         const uint32_t sel2 = ((sel >> 2) & 3);
-        *val += *(reinterpret_cast<const uint32_t*>(in)) & mask[sel2];
+        *val += *bitwise_reinterpret<std::uint32_t>(in, sel2 + 1);
         *out++ = *val;
         in += sel2 + 1;
         const uint32_t sel3 = ((sel >> 4) & 3);
-        *val += *(reinterpret_cast<const uint32_t*>(in)) & mask[sel3];
+        *val += *bitwise_reinterpret<std::uint32_t>(in, sel3 + 1);
         *out++ = *val;
         in += sel3 + 1;
         const uint32_t sel4 = (sel >> 6);
-        *val += *(reinterpret_cast<const uint32_t*>(in)) & mask[sel4];
+        *val += *bitwise_reinterpret<std::uint32_t>(in, sel4 + 1);
         *out++ = *val;
         in += sel4 + 1;
         return in;
     }
 };
-
-template <bool delta>
-uint32_t VarIntGB<delta>::mask[4] = {0xFF, 0xFFFF, 0xFFFFFF, 0xFFFFFFFF};
 
 struct varintgb_block {
     static const uint64_t block_size = 128;
@@ -252,7 +246,7 @@ struct varintgb_block {
             interpolative_block::encode(in, sum_of_values, n, out);
             return;
         }
-        thread_local std::vector<uint8_t> buf(2 * block_size * sizeof(uint32_t));
+        thread_local std::array<std::uint8_t, 2 * block_size * sizeof(uint32_t)> buf{};
         size_t out_len = varintgb_codec.encodeArray(in, n, buf.data());
         out.insert(out.end(), buf.data(), buf.data() + out_len);
     }

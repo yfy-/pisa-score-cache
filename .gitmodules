@@ -67,3 +67,12 @@
 [submodule "external/rapidcheck"]
 	path = external/rapidcheck
 	url = https://github.com/emil-e/rapidcheck.git
+[submodule "external/taily"]
+	path = external/taily
+	url = https://github.com/pisa-engine/taily.git
+[submodule "external/benchmark"]
+	path = external/benchmark
+	url = https://github.com/google/benchmark.git
+[submodule "external/oneTBB"]
+	path = external/oneTBB
+	url = https://github.com/oneapi-src/oneTBB.git

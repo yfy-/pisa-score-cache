@@ -1,18 +1,18 @@
 #pragma once
 
-#include "boost/variant.hpp"
-#include "spdlog/spdlog.h"
+#include <variant>
+
 #include <range/v3/view/zip.hpp>
+#include <spdlog/spdlog.h>
 
 #include "binary_freq_collection.hpp"
 #include "bitvector_collection.hpp"
 #include "configuration.hpp"
-#include "util/util.hpp"
-
 #include "global_parameters.hpp"
 #include "linear_quantizer.hpp"
 #include "sequence/positive_sequence.hpp"
 #include "util/index_build_utils.hpp"
+#include "util/util.hpp"
 #include "wand_utils.hpp"
 
 namespace pisa {
@@ -109,15 +109,15 @@ class wand_data_compressed {
         float add_sequence(
             binary_freq_collection::sequence const& seq,
             binary_freq_collection const& coll,
-            std::vector<uint32_t> const& doc_lens,
+            [[maybe_unused]] std::vector<uint32_t> const& doc_lens,
             float avg_len,
             Scorer scorer,
             BlockSize block_size)
         {
-            auto t = block_size.type() == typeid(FixedBlock)
-                ? static_block_partition(seq, scorer, boost::get<FixedBlock>(block_size).size)
+            auto t = std::holds_alternative<FixedBlock>(block_size)
+                ? static_block_partition(seq, scorer, std::get<FixedBlock>(block_size).size)
                 : variable_block_partition(
-                    coll, seq, scorer, boost::get<VariableBlock>(block_size).lambda);
+                    coll, seq, scorer, std::get<VariableBlock>(block_size).lambda);
 
             float max_score = *(std::max_element(t.second.begin(), t.second.end()));
             max_term_weight.push_back(max_score);
@@ -130,7 +130,7 @@ class wand_data_compressed {
             return max_term_weight.back();
         }
 
-        void quantize_block_max_term_weights(float index_max_term_weight) {}
+        void quantize_block_max_term_weights([[maybe_unused]] float index_max_term_weight) {}
 
         void build(wand_data_compressed& wdata)
         {
@@ -202,10 +202,10 @@ class wand_data_compressed {
         uint64_t PISA_FLATTEN_FUNC docid() const { return m_cur_docid; }
 
       private:
+        compact_elias_fano::enumerator m_docs_enum;
+        float m_max_term_weight{0};
         uint64_t m_cur_docid{0};
         uint64_t m_cur_score_index{0};
-        float m_max_term_weight{0};
-        compact_elias_fano::enumerator m_docs_enum;
     };
 
     uint64_t size() const { return m_docs_sequences.size(); }

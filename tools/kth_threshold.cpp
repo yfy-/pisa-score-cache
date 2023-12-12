@@ -120,7 +120,7 @@ void kt_thresholds(
             Query query;
             query.terms.push_back(term);
             wand_q(make_max_scored_cursors(index, wdata, *scorer, query), index.num_docs());
-            threshold = std::max(threshold, topk.size() == k ? topk.threshold() : 0.0F);
+            threshold = std::max(threshold, topk.size() == k ? topk.true_threshold() : 0.0F);
             topk.clear();
         }
         for (size_t i = 0; i < terms.size(); ++i) {
@@ -129,7 +129,7 @@ void kt_thresholds(
                     Query query;
                     query.terms = {terms[i], terms[j]};
                     wand_q(make_max_scored_cursors(index, wdata, *scorer, query), index.num_docs());
-                    threshold = std::max(threshold, topk.size() == k ? topk.threshold() : 0.0F);
+                    threshold = std::max(threshold, topk.size() == k ? topk.true_threshold() : 0.0F);
                     topk.clear();
                 }
             }
@@ -142,7 +142,8 @@ void kt_thresholds(
                         query.terms = {terms[i], terms[j], terms[s]};
                         wand_q(
                             make_max_scored_cursors(index, wdata, *scorer, query), index.num_docs());
-                        threshold = std::max(threshold, topk.size() == k ? topk.threshold() : 0.0F);
+                        threshold =
+                            std::max(threshold, topk.size() == k ? topk.true_threshold() : 0.0F);
                         topk.clear();
                     }
                 }
@@ -164,7 +165,6 @@ int main(int argc, const char** argv)
     std::string query_filename;
     std::optional<std::string> pairs_filename;
     std::optional<std::string> triples_filename;
-    size_t k;
     std::string index_filename;
     std::string wand_data_filename;
     bool quantized = false;
@@ -172,7 +172,7 @@ int main(int argc, const char** argv)
     bool all_pairs = false;
     bool all_triples = false;
 
-    App<arg::Index, arg::WandData<arg::WandMode::Required>, arg::Query<arg::QueryMode::Ranked>, arg::Scorer>
+    App<arg::Index, arg::WandData<arg::WandMode::Required>, arg::Query<arg::QueryMode::Ranked>, arg::Scorer, arg::LogLevel>
         app{"A tool for performing threshold estimation using the k-highest impact score for each "
             "term, pair or triple of a query. Pairs and triples are only used if provided with "
             "--pairs and --triples respectively."};
@@ -187,6 +187,8 @@ int main(int argc, const char** argv)
     app.add_flag("--quantized", quantized, "Quantizes the scores");
 
     CLI11_PARSE(app, argc, argv);
+
+    spdlog::set_level(app.log_level());
 
     auto params = std::make_tuple(
         app.index_filename(),
