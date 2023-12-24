@@ -12,8 +12,8 @@ class QueryParser {
 
   public:
     explicit QueryParser(TextAnalyzer analyzer, std::unique_ptr<TermMap> term_map = nullptr);
-    [[nodiscard]] auto parse(std::string_view query) -> Query;
-    [[nodiscard]] auto parse(std::string const& query) -> Query;
+    [[nodiscard]] auto parse(std::string_view query) const -> Query;
+    [[nodiscard]] auto parse(std::string const& query) const -> Query;
 };
 
 }  // namespace pisa

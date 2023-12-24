@@ -7,7 +7,7 @@ QueryParser::QueryParser(TextAnalyzer analyzer, std::unique_ptr<TermMap> term_ma
     : m_analyzer(std::move(analyzer)), m_term_map(std::move(term_map))
 {}
 
-auto QueryParser::parse(std::string_view query) -> Query
+auto QueryParser::parse(std::string_view query) const -> Query
 {
     auto [id, raw_query] = split_query_at_colon(query);
     auto tokens = m_analyzer.analyze(raw_query);
@@ -20,7 +20,7 @@ auto QueryParser::parse(std::string_view query) -> Query
     return {std::move(id), std::move(query_ids), {}};
 }
 
-auto QueryParser::parse(std::string const& query) -> Query
+auto QueryParser::parse(std::string const& query) const -> Query
 {
     return parse(std::string_view(query));
 }

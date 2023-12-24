@@ -127,7 +127,7 @@ struct topk_queue {
     /// The current number of entries in the queue.
     [[nodiscard]] auto size() const noexcept -> std::size_t { return m_q.size(); }
 
-    [[nodiscard]] Threshold threshold_at_k() const noexcept {
+    [[nodiscard]] Score threshold_at_k() const noexcept {
       return m_threshold_at_k;
     }
 

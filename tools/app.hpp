@@ -124,16 +124,22 @@ namespace arg {
             return std::nullopt;
         }
 
+      [[nodiscard]] auto query_parser() const -> QueryParser
+      {
+          std::unique_ptr<TermMap> term_map = [this]() -> std::unique_ptr<TermMap> {
+              if (this->m_term_lexicon) {
+                  return std::make_unique<LexiconMap>(*this->m_term_lexicon);
+              }
+              return std::make_unique<IntMap>();
+          }();
+
+          return QueryParser(text_analyzer(), std::move(term_map));
+      }
+
         [[nodiscard]] auto queries() const -> std::vector<::pisa::Query>
         {
             std::vector<::pisa::Query> pre_queries;
-            std::unique_ptr<TermMap> term_map = [this]() -> std::unique_ptr<TermMap> {
-                if (this->m_term_lexicon) {
-                    return std::make_unique<LexiconMap>(*this->m_term_lexicon);
-                }
-                return std::make_unique<IntMap>();
-            }();
-            QueryParser parser(text_analyzer(), std::move(term_map));
+            QueryParser parser = query_parser();
             auto parse_query = [&pre_queries, &parser](auto&& line) {
               pre_queries.push_back(parser.parse(line));
             };

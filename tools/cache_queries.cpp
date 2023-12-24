@@ -29,16 +29,18 @@
 #include "util/util.hpp"
 #include "wand_data_compressed.hpp"
 #include "wand_data_raw.hpp"
+#include "type_alias.hpp"
+#include "term_map.hpp"
 
 using namespace pisa;
 using ranges::views::enumerate;
-using ScoreCache = std::unordered_map<Query, Threshold>;
+using ScoreCache = std::unordered_map<Query, Score>;
 
 struct QueryResult {
   const Query& query;
-  Threshold init_threshold;
-  Threshold k_threshold;
-  Threshold final_threshold;
+  Score init_threshold;
+  Score k_threshold;
+  Score final_threshold;
   std::vector<double> times;
   QueryResult(const Query& q) : query(q), init_threshold(0), k_threshold(0),
                                 final_threshold(0) {}
@@ -114,7 +116,7 @@ std::vector<QueryResult> op_perftest(
   return results;
 }
 
-Threshold cache_search(const Query& query, const ScoreCache& cache) {
+Score cache_search(const Query& query, const ScoreCache& cache) {
   if (cache.empty())
     return 0.0;
 
@@ -128,13 +130,13 @@ Threshold cache_search(const Query& query, const ScoreCache& cache) {
     subqueries.insert(std::end(subqueries), std::begin(sq), std::end(sq));
   }
 
-  Threshold cache_score = 0.0;
+  Score cache_score = 0.0;
   for (auto q : subqueries) {
     auto found = cache.find(q);
     if (found == end(cache))
       continue;
 
-    cache_score = max(cache_score, found->second);
+    cache_score = std::max(cache_score, found->second);
   }
 
   return cache_score;
@@ -144,17 +146,16 @@ template <typename QueryType>
 QueryResult query_execute(
     const Query& query, const ScoreCache& cache, uint64_t k,
     const std::function<void(const QueryType&)>& callback) {
-  topk_queue topk(k);
-  Threshold init_threshold = cache_search(query, cache);
-  topk.set_threshold(init_threshold);
-  QueryType qrun(topk);
-  callback(qrun);
-  topk.finalize();
-  QueryResult res(query);
-  res.init_threshold = init_threshold;
-  res.k_threshold = topk.threshold_at_k();
-  res.final_threshold = topk.threshold();
-  return res;
+    Score init_threshold = cache_search(query, cache);
+    topk_queue topk(k, /* initial_threshold= */ init_threshold);
+    QueryType qrun(topk);
+    callback(qrun);
+    topk.finalize();
+    QueryResult res(query);
+    res.init_threshold = init_threshold;
+    res.k_threshold = topk.threshold_at_k();
+    res.final_threshold = topk.true_threshold();
+    return res;
 }
 
 using AlgoResult = std::pair<std::string, std::vector<QueryResult>>;
@@ -165,8 +166,7 @@ std::vector<AlgoResult> perftest(
     const std::optional<std::string>& wand_data_filename,
     const std::vector<Query>& queries,
     const std::optional<std::string>& thresholds_filename,
-    const std::optional<std::string>& stopwords_filename,
-    const std::optional<std::string>& stemmer_type,
+    const QueryParser& query_parser,
     const std::optional<std::string>& terms_filename,
     std::string const& type,
     std::string const& query_type,
@@ -196,7 +196,7 @@ std::vector<AlgoResult> perftest(
     }();
 
     std::vector<std::string> query_lines;
-    std::vector<Threshold> scores;
+    std::vector<Score> scores;
     if (thresholds_filename) {
       spdlog::info("Loading score cache");
       std::string t;
@@ -215,9 +215,10 @@ std::vector<AlgoResult> perftest(
     }
 
     std::vector<Query> cache_queries;
-    std::function<void(const std::string)> parser = resolve_query_parser(
-        cache_queries, terms_filename, stopwords_filename, stemmer_type);
-    std::for_each(std::begin(query_lines), std::end(query_lines), parser);
+    auto parse_query = [&cache_queries, &query_parser](auto&& line) {
+        cache_queries.push_back(query_parser.parse(line));
+    };
+    std::for_each(std::begin(query_lines), std::end(query_lines), parse_query);
     ScoreCache score_cache;
     for (int i = 0; i < scores.size(); ++i) {
       if (!cache_queries[i].terms.size())
@@ -326,8 +327,7 @@ int main(int argc, const char** argv)
         app.wand_data_path(),
         app.queries(),
         app.thresholds_file(),
-        app.stop_words(),
-        app.stemmer(),
+        app.query_parser(),
         app.term_lexicon(),
         app.index_encoding(),
         app.algorithm(),
@@ -357,9 +357,6 @@ int main(int argc, const char** argv)
     } else {
         spdlog::error("Unknown type {}", app.index_encoding());
     }
-
-    if (app.stemmer())
-      out_basename += "_" + *app.stemmer();
 
     out_basename += "_" + app.index_encoding() + "_" + std::to_string(app.k()) +
                     "_" + app.scorer_params().name;
