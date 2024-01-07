@@ -143,7 +143,7 @@ Score cache_search(const Query& query, const ScoreCache& cache) {
 }
 
 template <typename QueryType>
-QueryResult query_execute(
+QueryResult query_cache_execute(
     const Query& query, const ScoreCache& cache, uint64_t k,
     const std::function<void(const QueryType&)>& callback) {
     Score init_threshold = cache_search(query, cache);
@@ -172,7 +172,8 @@ std::vector<AlgoResult> perftest(
     std::string const& query_type,
     uint64_t k,
     uint32_t runs,
-    const ScorerParams& scorer_params)
+    const ScorerParams& scorer_params,
+    bool weighted)
 {
     spdlog::info("Loading index from {}", index_filename);
     IndexType index(MemorySource::mapped_file(index_filename));
@@ -239,38 +240,50 @@ std::vector<AlgoResult> perftest(
       spdlog::info("Query type: {}", t);
       if (t == "wand" && wand_data_filename) {
         query_fun = [&](const Query& query, const ScoreCache& cache) {
-          return query_execute<wand_query>(
+          return query_cache_execute<wand_query>(
               query, cache, k, [&](wand_query wand_q) {
                 wand_q(make_max_scored_cursors(index, wdata, *scorer,
-                                               query), index.num_docs());
+                                               query, weighted), index.num_docs());
               });
         };
       } else if (t == "block_max_wand" && wand_data_filename) {
         query_fun = [&](const Query& query, const ScoreCache& cache) {
-          return query_execute<block_max_wand_query>(
+          return query_cache_execute<block_max_wand_query>(
               query, cache, k, [&](block_max_wand_query bmw_q) {
                 bmw_q(make_block_max_scored_cursors(index, wdata, *scorer,
-                                                    query),
+                                                    query, weighted),
                       index.num_docs());
               });
         };
       } else if (t == "block_max_maxscore" && wand_data_filename) {
         query_fun = [&](const Query& query, const ScoreCache& cache) {
-          return query_execute<block_max_maxscore_query>(
+          return query_cache_execute<block_max_maxscore_query>(
               query, cache, k, [&](block_max_maxscore_query bmm_q) {
                 bmm_q(make_block_max_scored_cursors(index, wdata, *scorer,
-                                                    query),
+                                                    query, weighted),
                       index.num_docs());
               });
         };
       } else if (t == "maxscore" && wand_data_filename) {
         query_fun = [&](const Query& query, const ScoreCache& cache) {
-          return query_execute<maxscore_query>(
+          return query_cache_execute<maxscore_query>(
               query, cache, k, [&](maxscore_query max_q) {
                 max_q(make_max_scored_cursors(index, wdata, *scorer,
-                                              query), index.num_docs());
+                                              query, weighted), index.num_docs());
               });
         };
+      } else if (t == "ranked_or") {
+          query_fun = [&](const Query& query, const ScoreCache&) {
+            topk_queue topk(k);
+            ranked_or_query ranked_or_q(topk);
+            ranked_or_q(make_scored_cursors(index, *scorer, query, weighted),
+                        index.num_docs());
+            topk.finalize();
+            QueryResult res(query);
+            res.k_threshold = topk.threshold_at_k();
+            res.final_threshold = topk.true_threshold();
+            return res;
+          };
       } else {
         spdlog::error("Unsupported query type: {}", t);
         continue;
@@ -333,7 +346,8 @@ int main(int argc, const char** argv)
         app.algorithm(),
         app.k(),
         runs,
-        app.scorer_params());
+        app.scorer_params(),
+        app.weighted());
     std::vector<AlgoResult> results;
     /**/
     if (false) {
