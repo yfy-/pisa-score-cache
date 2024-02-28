@@ -38,12 +38,9 @@ using ScoreCache = std::unordered_map<Query, Score>;
 
 struct QueryResult {
   const Query& query;
-  Score init_threshold;
-  Score k_threshold;
-  Score final_threshold;
+  topk_queue topk;
   std::vector<double> times;
-  QueryResult(const Query& q) : query(q), init_threshold(0), k_threshold(0),
-                                final_threshold(0) {}
+  QueryResult(const Query& q, topk_queue&& tp) : query(q), topk(tp) {}
 };
 
 void report_result(const std::vector<QueryResult>& results,
@@ -63,8 +60,8 @@ void report_result(const std::vector<QueryResult>& results,
     for (auto qb = r.query.terms.begin() + 1, qe = r.query.terms.end();
          qb != qe; ++qb)
       fs << "," << *qb;
-    fs << "\t" << r.init_threshold << "\t" << r.k_threshold << "\t" <<
-        r.final_threshold << "\t";
+    fs << "\t" << r.topk.initial_threshold() << "\t" <<
+      r.topk.threshold_at_k() << "\t" << r.topk.true_threshold() << "\t";
     const std::vector<double>& r_times = r.times;
     fs << r_times[0];
     for (auto tb = r_times.begin() + 1, te = r_times.end(); tb != te; ++tb)
@@ -151,11 +148,7 @@ QueryResult query_cache_execute(
     QueryType qrun(topk);
     callback(qrun);
     topk.finalize();
-    QueryResult res(query);
-    res.init_threshold = init_threshold;
-    res.k_threshold = topk.threshold_at_k();
-    res.final_threshold = topk.true_threshold();
-    return res;
+    return QueryResult(query, std::move(topk));
 }
 
 using AlgoResult = std::pair<std::string, std::vector<QueryResult>>;
@@ -189,12 +182,14 @@ std::vector<AlgoResult> perftest(
       }
     }
 
+    spdlog::info("warmed up");
     WandType const wdata = [&] {
         if (wand_data_filename) {
             return WandType(MemorySource::mapped_file(*wand_data_filename));
         }
         return WandType{};
     }();
+    spdlog::info("wand loaded up");
 
     std::vector<std::string> query_lines;
     std::vector<Score> scores;
@@ -279,10 +274,7 @@ std::vector<AlgoResult> perftest(
             ranked_or_q(make_scored_cursors(index, *scorer, query, weighted),
                         index.num_docs());
             topk.finalize();
-            QueryResult res(query);
-            res.k_threshold = topk.threshold_at_k();
-            res.final_threshold = topk.true_threshold();
-            return res;
+            return QueryResult(query, std::move(topk));
           };
       } else {
         spdlog::error("Unsupported query type: {}", t);
@@ -308,6 +300,7 @@ int main(int argc, const char** argv)
     bool result_cache_filter = false;
     uint32_t runs = 2;
     std::string out_basename = "";
+    std::string documents_file = "";
 
     App<arg::Index,
         arg::WandData<arg::WandMode::Optional>,
@@ -317,6 +310,8 @@ int main(int argc, const char** argv)
         arg::Thresholds>
         app{"Benchmarks queries on a given index."};
     app.add_option("-o,--output", out_basename, "Output basename")->required();
+    app.add_option("--documents", documents_file,
+                   "Document lexicon")->required();
     app.add_flag("--quantized", quantized, "Quantized scores");
     app.add_flag("--silent", silent, "Suppress logging");
     app.add_flag("--result-cache-filter", result_cache_filter,
@@ -374,6 +369,22 @@ int main(int argc, const char** argv)
 
     out_basename += "_" + app.index_encoding() + "_" + std::to_string(app.k()) +
                     "_" + app.scorer_params().name;
+    // Dump TREC results only for the first one
+    auto source = std::make_shared<mio::mmap_source>(documents_file.c_str());
+    auto docmap = Payload_Vector<>::from(*source);
+    std::ofstream trec_fs(out_basename + ".trec");
+    std::vector<QueryResult>& fs_res = results[0].second;
+    int query_id = 0;
+    for (const auto& qr: fs_res) {
+      int rank = 1;
+      for (const auto& [score, docid]: qr.topk.topk()) {
+        std::string qid = qr.query.id.value_or(std::to_string(query_id));
+        trec_fs << qid << " Q0 " << docmap[docid] << " " <<
+          std::to_string(rank) << " " << std::to_string(score) << " R0\n";
+        ++rank;
+      }
+      ++query_id;
+    }
     for (const auto& ar: results)
       report_result(ar.second, out_basename + "." + ar.first);
 
