@@ -5,6 +5,8 @@
 #include <vector>
 
 #include <mio/mmap.hpp>
+#include <spdlog/spdlog.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
 
 #include "app.hpp"
 #include "query/queries.hpp"
@@ -20,6 +22,7 @@ int main(int argc, const char** argv)
     app.add_option("--only-top", only_top, "Use only top-k highest weight terms from query.")
         ->needs(app.weighted_option());
     CLI11_PARSE(app, argc, argv);
+    spdlog::set_default_logger(spdlog::stderr_color_mt("stderr"));
 
     mio::mmap_source source;
     Payload_Vector<> lexicon;
