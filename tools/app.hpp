@@ -104,12 +104,13 @@ namespace arg {
 
     template <QueryMode Mode = QueryMode::Ranked>
     struct Query: public Analyzer {
-      explicit Query(CLI::App* app) : Analyzer(app), m_unique_queries(false)
+        explicit Query(CLI::App* app) : Analyzer(app), m_unique_queries(false)
         {
             app->add_option("-q,--queries", m_query_file, "Path to file with queries")
                 ->capture_default_str();
             m_terms_option = app->add_option("--terms", m_term_lexicon, "Term lexicon");
-            app->add_flag("--weighted", m_weighted, "Weights scores by query frequency");
+            m_weighted_option =
+                app->add_flag("--weighted", m_weighted, "Weights scores by query frequency");
             app->add_flag("--unique", m_unique_queries, "Filter-out duplicate queries");
             if constexpr (Mode == QueryMode::Ranked) {
                 app->add_option("-k", m_k, "The number of top results to return")->required();
@@ -124,24 +125,24 @@ namespace arg {
             return std::nullopt;
         }
 
-      [[nodiscard]] auto query_parser() const -> QueryParser
-      {
-          std::unique_ptr<TermMap> term_map = [this]() -> std::unique_ptr<TermMap> {
-              if (this->m_term_lexicon) {
-                  return std::make_unique<LexiconMap>(*this->m_term_lexicon);
-              }
-              return std::make_unique<IntMap>();
-          }();
+        [[nodiscard]] auto query_parser() const -> QueryParser
+        {
+            std::unique_ptr<TermMap> term_map = [this]() -> std::unique_ptr<TermMap> {
+                if (this->m_term_lexicon) {
+                    return std::make_unique<LexiconMap>(*this->m_term_lexicon);
+                }
+                return std::make_unique<IntMap>();
+            }();
 
-          return QueryParser(text_analyzer(), std::move(term_map));
-      }
+            return QueryParser(text_analyzer(), std::move(term_map));
+        }
 
         [[nodiscard]] auto queries() const -> std::vector<::pisa::Query>
         {
             std::vector<::pisa::Query> pre_queries;
             QueryParser parser = query_parser();
-            auto parse_query = [&pre_queries, &parser](auto&& line) {
-              pre_queries.push_back(parser.parse(line));
+            auto parse_query = [&pre_queries, &parser, this](auto&& line) {
+                pre_queries.push_back(parser.parse(line, /*weighted=*/m_weighted));
             };
             if (m_query_file) {
                 std::ifstream is(*m_query_file);
@@ -178,6 +179,7 @@ namespace arg {
         [[nodiscard]] auto k() const -> int { return m_k; }
 
         [[nodiscard]] auto weighted() const -> bool { return m_weighted; }
+        [[nodiscard]] auto weighted_option() const -> CLI::Option* { return m_weighted_option; }
 
       protected:
         [[nodiscard]] auto terms_option() const -> CLI::Option* { return m_terms_option; }
@@ -193,6 +195,7 @@ namespace arg {
         std::optional<std::string> m_term_lexicon{std::nullopt};
         bool m_unique_queries;
         CLI::Option* m_terms_option{};
+        CLI::Option* m_weighted_option{};
     };
 
     struct Algorithm {

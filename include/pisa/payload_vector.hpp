@@ -269,6 +269,8 @@ class Payload_Vector {
     using payload_type = Payload_View;
     using iterator = detail::Payload_Vector_Iterator<Payload_View>;
 
+    Payload_Vector() = default;
+
     explicit Payload_Vector(Payload_Vector_Buffer const& container)
         : offsets_(container.offsets), payloads_(container.payloads)
     {}
