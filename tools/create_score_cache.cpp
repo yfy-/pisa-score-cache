@@ -14,14 +14,20 @@ int main(int argc, const char** argv) {
   App<arg::Query<arg::QueryMode::Ranked>> app(
       "Creates a score cache from TREC results and the query log that produced"
       " those results with `evaluate_queries`");
-  std::string trec_file;
-  app.add_option("-t,--trec", trec_file, "TREC file")->required();
+  std::string trec_file = "";
+  app.add_option("-t,--trec", trec_file, "TREC file");
   CLI11_PARSE(app, argc, argv);
   std::uint32_t k = app.k();
-  std::ifstream trec_stream(trec_file);
+  std::istream* in_stream = &std::cin;
+  std::ifstream trec_file_stream;
+  if (trec_file != "") {
+      trec_file_stream.open(trec_file);
+      in_stream = &trec_file_stream;
+  }
+
   std::string trec_line;
   std::unordered_map<std::string, float> kth_scores;
-  while (std::getline(trec_stream, trec_line)) {
+  while (std::getline(*in_stream, trec_line)) {
     std::stringstream tok_stream(trec_line);
     int tok_id = 0;
     std::string tok;
