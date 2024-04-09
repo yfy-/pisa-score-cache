@@ -38,7 +38,7 @@ int main(int argc, const char** argv) {
           qid = tok;
       } else if (tok_id == 3) {
         qrank = std::stoull(tok);
-        if (qrank + 1 != k)
+        if (qrank != k)
           break;
       } else if (tok_id == 4) {
         kth_scores[qid] = std::stof(tok);
