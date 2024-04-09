@@ -33,7 +33,7 @@ int main(int argc, const char** argv) {
     std::string tok;
     std::string qid;
     std::uint32_t qrank = 0;
-    while (std::getline(tok_stream, tok, '\t')) {
+    while (std::getline(tok_stream, tok, ' ')) {
       if (tok_id == 0) {
           qid = tok;
       } else if (tok_id == 3) {
