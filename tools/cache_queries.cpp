@@ -206,7 +206,7 @@ std::vector<AlgoResult> perftest(
         std::string t;
         std::ifstream tin(*thresholds_filename);
         while (std::getline(tin, t)) {
-            size_t i = t.find(";");
+            size_t i = t.find_last_of(";");
             if (i == std::string::npos) {
                 spdlog::error(
                     "Invalid cache entry {}, "
