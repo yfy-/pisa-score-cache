@@ -13,43 +13,46 @@ namespace pisa {
 
 uint32_t Query::default_query_id = 0;
 
-bool Query::next_subset(std::vector<size_t>& ptrs,
-                        std::vector<size_t>& end_ptrs,
-                        size_t length) const {
-  for (int i = length - 1; i > -1; i--) {
-    if (ptrs[i] < end_ptrs[i]) {
-      ptrs[i]++;
-      size_t moved = ptrs[i];
-      for (int j = i + 1; j < length; j++) {
-        ptrs[j] = moved + 1;
-        moved++;
-      }
+bool Query::next_subset(std::vector<size_t>& ptrs, std::vector<size_t>& end_ptrs, size_t length) const
+{
+    for (int i = length - 1; i > -1; i--) {
+        if (ptrs[i] < end_ptrs[i]) {
+            ptrs[i]++;
+            size_t moved = ptrs[i];
+            for (int j = i + 1; j < length; j++) {
+                ptrs[j] = moved + 1;
+                moved++;
+            }
 
-      return true;
+            return true;
+        }
     }
-  }
 
-  return false;
+    return false;
 }
 
-std::vector<Query> Query::subsets(size_t length) const {
-  size_t term_len = terms.size();
-  std::vector<Query> subsets;
-  if (length <= term_len) {
-    std::vector<size_t> ptrs(length);
-    std::iota(std::begin(ptrs), std::end(ptrs), 0);
-    std::vector<size_t> end_ptrs(length);
-    std::iota(std::begin(end_ptrs), std::end(end_ptrs), term_len - length);
-    do {
-      std::vector<term_id_type> subterms(length);
-      for (size_t i = 0; i < length; ++i)
-        subterms[i] = terms[ptrs[i]];
+std::vector<Query> Query::subsets(size_t length) const
+{
+    size_t term_len = terms.size();
+    std::vector<Query> subsets;
+    if (length <= term_len) {
+        std::vector<size_t> ptrs(length);
+        std::iota(std::begin(ptrs), std::end(ptrs), 0);
+        std::vector<size_t> end_ptrs(length);
+        std::iota(std::begin(end_ptrs), std::end(end_ptrs), term_len - length);
+        do {
+            std::vector<term_id_type> subterms(length);
+            std::vector<float> subterm_weights(length);
+            for (size_t i = 0; i < length; ++i) {
+                subterms[i] = terms[ptrs[i]];
+                subterm_weights[i] = term_weights[ptrs[i]];
+            }
 
-      subsets.emplace_back(Query{std::nullopt, std::move(subterms), {}});
-    } while (next_subset(ptrs, end_ptrs, length));
-  }
+            subsets.emplace_back(Query(std::nullopt, std::move(subterms), std::move(subterm_weights)));
+        } while (next_subset(ptrs, end_ptrs, length));
+    }
 
-  return subsets;
+    return subsets;
 }
 
 auto split_query_at_colon(std::string_view query_string)
@@ -58,9 +61,8 @@ auto split_query_at_colon(std::string_view query_string)
     // query id : terms (or ids)
     auto colon = std::find(query_string.begin(), query_string.end(), ':');
     std::optional<std::string> id;
-    id = colon != query_string.end() ?
-         std::string(query_string.begin(), colon) :
-         std::to_string(Query::default_query_id++);
+    id = colon != query_string.end() ? std::string(query_string.begin(), colon)
+                                     : std::to_string(Query::default_query_id++);
     auto pos = colon == query_string.end() ? query_string.begin() : std::next(colon);
     auto raw_query = std::string_view(&*pos, std::distance(pos, query_string.end()));
     return {std::move(id), raw_query};
@@ -129,7 +131,7 @@ std::function<void(const std::string)> resolve_query_parser(
     }
 
     return [&queries](std::string const& query_line) {
-            queries.push_back(parse_query_ids(query_line));
+        queries.push_back(parse_query_ids(query_line));
     };
 }
 
