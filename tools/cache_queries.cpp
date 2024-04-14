@@ -112,13 +112,13 @@ std::vector<QueryResult> op_perftest(
     return results;
 }
 
-Score cache_search(const Query& query, const ScoreCache& cache)
+Score cache_search(const Query& query, const ScoreCache& cache, uint32_t cache_max_subset_size)
 {
     if (cache.empty())
         return 0.0;
 
     std::vector<Query> subqueries;
-    for (size_t i = 3; i > 0; --i) {
+    for (size_t i = cache_max_subset_size; i > 0; --i) {
         std::vector<Query> sq = query.subsets(i);
         subqueries.insert(
             std::end(subqueries),
@@ -147,9 +147,10 @@ QueryResult query_cache_execute(
     const Query& query,
     const ScoreCache& cache,
     uint64_t k,
+    uint32_t cache_max_subset_size,
     const std::function<void(const QueryType&)>& callback)
 {
-    Score init_threshold = cache_search(query, cache);
+    Score init_threshold = cache_search(query, cache, cache_max_subset_size);
     topk_queue topk(k, /* initial_threshold= */ init_threshold);
     QueryType qrun(topk);
     callback(qrun);
@@ -176,7 +177,8 @@ std::vector<AlgoResult> perftest(
     uint64_t k,
     uint32_t runs,
     const ScorerParams& scorer_params,
-    bool weighted)
+    bool weighted,
+    uint32_t cache_max_subset_size)
 {
     spdlog::info("Loading index from {}", index_filename);
     IndexType index(MemorySource::mapped_file(index_filename));
@@ -245,16 +247,17 @@ std::vector<AlgoResult> perftest(
         spdlog::info("Query type: {}", t);
         if (t == "wand" && wand_data_filename) {
             query_fun = [&](const Query& query, const ScoreCache& cache) {
-                return query_cache_execute<wand_query>(query, cache, k, [&](wand_query wand_q) {
-                    wand_q(
-                        make_max_scored_cursors(index, wdata, *scorer, query, weighted),
-                        index.num_docs());
-                });
+                return query_cache_execute<wand_query>(
+                    query, cache, k, cache_max_subset_size, [&](wand_query wand_q) {
+                        wand_q(
+                            make_max_scored_cursors(index, wdata, *scorer, query, weighted),
+                            index.num_docs());
+                    });
             };
         } else if (t == "block_max_wand" && wand_data_filename) {
             query_fun = [&](const Query& query, const ScoreCache& cache) {
                 return query_cache_execute<block_max_wand_query>(
-                    query, cache, k, [&](block_max_wand_query bmw_q) {
+                    query, cache, k, cache_max_subset_size, [&](block_max_wand_query bmw_q) {
                         bmw_q(
                             make_block_max_scored_cursors(index, wdata, *scorer, query, weighted),
                             index.num_docs());
@@ -263,7 +266,7 @@ std::vector<AlgoResult> perftest(
         } else if (t == "block_max_maxscore" && wand_data_filename) {
             query_fun = [&](const Query& query, const ScoreCache& cache) {
                 return query_cache_execute<block_max_maxscore_query>(
-                    query, cache, k, [&](block_max_maxscore_query bmm_q) {
+                    query, cache, k, cache_max_subset_size, [&](block_max_maxscore_query bmm_q) {
                         bmm_q(
                             make_block_max_scored_cursors(index, wdata, *scorer, query, weighted),
                             index.num_docs());
@@ -271,11 +274,12 @@ std::vector<AlgoResult> perftest(
             };
         } else if (t == "maxscore" && wand_data_filename) {
             query_fun = [&](const Query& query, const ScoreCache& cache) {
-                return query_cache_execute<maxscore_query>(query, cache, k, [&](maxscore_query max_q) {
-                    max_q(
-                        make_max_scored_cursors(index, wdata, *scorer, query, weighted),
-                        index.num_docs());
-                });
+                return query_cache_execute<maxscore_query>(
+                    query, cache, k, cache_max_subset_size, [&](maxscore_query max_q) {
+                        max_q(
+                            make_max_scored_cursors(index, wdata, *scorer, query, weighted),
+                            index.num_docs());
+                    });
             };
         } else if (t == "ranked_or") {
             query_fun = [&](const Query& query, const ScoreCache&) {
@@ -311,6 +315,7 @@ int main(int argc, const char** argv)
     bool quantized = false;
     bool result_cache_filter = false;
     uint32_t runs = 2;
+    uint32_t cache_max_subset_size = 1;
     std::string out_basename = "";
 
     App<arg::Index,
@@ -328,6 +333,11 @@ int main(int argc, const char** argv)
         result_cache_filter,
         "Do not run if query exactly hits score cache/result cache");
     app.add_option("--runs", runs, "Number of runs (initial warm-up run will be already done)");
+    app.add_option(
+           "--cache-max-subset-size",
+           cache_max_subset_size,
+           "Maximum subset size to use for score cache probing.")
+        ->needs(app.thresholds_option());
     CLI11_PARSE(app, argc, argv);
 
     if (!runs)
@@ -352,7 +362,8 @@ int main(int argc, const char** argv)
         app.k(),
         runs,
         app.scorer_params(),
-        app.weighted());
+        app.weighted(),
+        cache_max_subset_size);
     std::vector<AlgoResult> results;
     /**/
     if (false) {
