@@ -13,7 +13,7 @@ struct Doc {
     std::uint32_t orig_id;
     std::uint32_t access_freq;
     std::uint32_t access_freq_above_threshold;
-    float total_score;
+    double total_score;
 };
 
 int main(int argc, const char** argv)
@@ -61,7 +61,7 @@ int main(int argc, const char** argv)
         boost::split(cols, trec_line, boost::is_any_of("\t, "));
         uint32_t doc_id = trec_to_id[cols[2]];
         uint32_t rank = std::stoul(cols[3]);
-        float score = std::stof(cols[4]);
+        double score = std::stod(cols[4]);
         if (rank <= topk) {
             if (++access_counts[doc_id].access_freq >= access_threshold) {
                 access_counts[doc_id].access_freq_above_threshold = access_counts[doc_id].access_freq;
