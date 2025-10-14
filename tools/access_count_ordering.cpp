@@ -14,6 +14,8 @@ struct Doc {
     std::uint32_t access_freq;
     std::uint32_t access_freq_above_threshold;
     double total_score;
+    // Total reciprocal rank.
+    double total_rr;
 };
 
 int main(int argc, const char** argv)
@@ -21,7 +23,7 @@ int main(int argc, const char** argv)
     CLI::App app{"Create document mapping ordered by access counts"};
     std::string trec_file = "";
     std::string doclex_file = "";
-    bool sort_total_score = false;
+    std::string sort_by = "access_count";
     bool distro = false;
     uint32_t topk = 10;
     uint32_t access_threshold = 0;
@@ -30,7 +32,7 @@ int main(int argc, const char** argv)
     app.add_option("-t,--trec", trec_file, "TREC eval file")->required();
     app.add_option("-d,--doclex", doclex_file, "Document lexicon")->required();
     app.add_option("-k,--topk", topk, "Count until k results");
-    app.add_flag("-s,--total-score", sort_total_score, "Break ties by total score before id");
+    app.add_option("-s,--sort-by", sort_by, "Sort method for the ordering (descending).");
     app.add_flag(
         "-i,--distro", distro, "Outputs frequency distribution rather than new doc mapping");
     app.add_option(
@@ -68,30 +70,45 @@ int main(int argc, const char** argv)
             }
 
             access_counts[doc_id].total_score += score;
+            access_counts[doc_id].total_rr += 1.0 / rank;
         }
     }
 
-    spdlog::info("Sorting access counts");
-    std::function<bool(const Doc&, const Doc&)> sort_func = [](const Doc& d1, const Doc& d2) {
+    auto by_ac = [](const Doc& d1, const Doc& d2) {
         if (d1.access_freq_above_threshold == d2.access_freq_above_threshold) {
             return d1.orig_id < d2.orig_id;
         }
 
         return d1.access_freq_above_threshold > d2.access_freq_above_threshold;
     };
-    if (sort_total_score) {
-        sort_func = [](const Doc& d1, const Doc& d2) {
-            if (d1.total_score == d2.total_score) {
-                return d1.orig_id < d2.orig_id;
-            }
-            return d1.total_score > d2.total_score;
-        };
-	spdlog::info("Sort key: Total Score");
+
+    auto by_ts = [](const Doc& d1, const Doc& d2) {
+        if (d1.total_score == d2.total_score) {
+            return d1.orig_id < d2.orig_id;
+        }
+        return d1.total_score > d2.total_score;
+    };
+
+    auto by_rr = [](const Doc& d1, const Doc& d2) {
+        if (d1.total_rr == d2.total_rr) {
+            return d1.orig_id < d2.orig_id;
+        }
+        return d1.total_rr > d2.total_rr;
+    };
+
+    if (sort_by == "access_count") {
+        spdlog::info("Sort by: Access Count");
+        std::sort(std::begin(access_counts), std::end(access_counts), by_ac);
+    } else if (sort_by == "total_score") {
+        spdlog::info("Sort by: Total Score");
+        std::sort(std::begin(access_counts), std::end(access_counts), by_ts);
+    } else if (sort_by == "reciprocal_rank") {
+        spdlog::info("Sort by: Total Reciprocal Rank");
+        std::sort(std::begin(access_counts), std::end(access_counts), by_rr);
     } else {
-	spdlog::info("Sort key: Access count");
+        throw std::invalid_argument("Unknown sort by method.");
     }
 
-    std::sort(std::begin(access_counts), std::end(access_counts), sort_func);
     std::map<std::uint32_t, std::uint32_t> freq_counts;
     for (std::uint32_t i = 0; i < num_docs; ++i) {
         if (distro) {
