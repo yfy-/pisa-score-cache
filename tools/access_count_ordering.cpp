@@ -1,5 +1,6 @@
 #include <CLI/CLI.hpp>
 #include <boost/algorithm/string.hpp>
+#include <cmath>
 #include <fstream>
 #include <map>
 #include <spdlog/sinks/stdout_color_sinks.h>
@@ -70,7 +71,7 @@ int main(int argc, const char** argv)
             }
 
             access_counts[doc_id].total_score += score;
-            access_counts[doc_id].total_rr += 1.0 / rank;
+            access_counts[doc_id].total_rr += 1.0 / std::log2(rank + 1);
         }
     }
 
