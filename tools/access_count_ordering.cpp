@@ -25,7 +25,7 @@ int main(int argc, const char** argv)
     std::string trec_file = "";
     std::string doclex_file = "";
     std::string sort_by = "access_count";
-    bool distro = false;
+    bool output_freq = false;
     uint32_t topk = 10;
     uint32_t access_threshold = 0;
 
@@ -35,7 +35,7 @@ int main(int argc, const char** argv)
     app.add_option("-k,--topk", topk, "Count until k results");
     app.add_option("-s,--sort-by", sort_by, "Sort method for the ordering (descending).");
     app.add_flag(
-        "-i,--distro", distro, "Outputs frequency distribution rather than new doc mapping");
+        "-f,--frequency", output_freq, "Outputs frequency doc frequencies rather than mapping.");
     app.add_option(
         "-a,--access-threshold",
         access_threshold,
@@ -110,19 +110,9 @@ int main(int argc, const char** argv)
         throw std::invalid_argument("Unknown sort by method.");
     }
 
-    std::map<std::uint32_t, std::uint32_t> freq_counts;
     for (std::uint32_t i = 0; i < num_docs; ++i) {
-        if (distro) {
-            ++freq_counts[access_counts[i].access_freq];
-        } else {
-            std::cout << access_counts[i].orig_id << " " << i << "\n";
-        }
-    }
-
-    if (distro) {
-        for (auto [freq, freq_count]: freq_counts) {
-            std::cout << freq << " " << freq_count << "\n";
-        }
+        std::cout << access_counts[i].orig_id << " "
+                  << (output_freq ? access_counts[i].access_freq : i) << "\n";
     }
 
     return 0;
